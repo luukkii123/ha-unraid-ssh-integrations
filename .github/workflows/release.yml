@@ -1,16 +1,16 @@
 name: Release
 
-# Ein Tag-Push genügt. Dieser Workflow legt das Release selbst an — vorher
-# musste es über die GitHub-API oder im Browser erzeugt werden, wofür es einen
-# persönlichen Token brauchte. Der `GITHUB_TOKEN` der Action reicht dafür aus.
+# Pushing a tag is enough. This workflow creates the release itself — before,
+# it had to be made through the GitHub API or in the browser, which needed a
+# personal access token. The action's own `GITHUB_TOKEN` covers this.
 #
-# Anders als bei den Karten wird **kein Asset** angehängt: HACS lädt bei einer
-# Integration den Ordner `custom_components/<domain>/` aus dem Tag-Stand.
+# Unlike the card repos, **no asset** is attached: for an integration HACS
+# pulls the `custom_components/<domain>/` folder straight from the tagged tree.
 on:
   push:
     tags:
       - "v*"
-  # Nachträglich auslösbar, falls ein Tag schon existiert.
+  # Can also be triggered after the fact, when the tag already exists.
   workflow_dispatch:
 
 permissions:
@@ -18,23 +18,23 @@ permissions:
 
 jobs:
   release:
-    name: Release anlegen
+    name: Create release
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Version gegen den Tag prüfen
+      - name: Check the version against the tag
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
           tag="${GITHUB_REF_NAME#v}"
           manifest=$(python3 -c "import json;print(json.load(open('custom_components/unraid_ssh/manifest.json'))['version'])")
-          echo "Tag: $tag — manifest.json: $manifest"
+          echo "Tag: $tag - manifest.json: $manifest"
           if [ "$tag" != "$manifest" ]; then
-            echo "::error::Die Version in manifest.json ($manifest) passt nicht zum Tag ($tag)."
+            echo "::error::The version in manifest.json ($manifest) does not match the tag ($tag)."
             exit 1
           fi
 
-      - name: Release anlegen
+      - name: Create release
         uses: softprops/action-gh-release@v2
         with:
           name: ${{ github.ref_name }}
