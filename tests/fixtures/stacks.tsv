@@ -1,0 +1,13 @@
+/boot/config/plugins/compose.manager/projects/Busch-Print/	Busch-Print	false
+/boot/config/plugins/compose.manager/projects/Buschfunk/	Buschfunk	true
+/boot/config/plugins/compose.manager/projects/Claude-Station/	Claude Station	false
+/boot/config/plugins/compose.manager/projects/Deckbuilder/	Deckbuilder	true
+/boot/config/plugins/compose.manager/projects/Dominion/	Dominion	
+/boot/config/plugins/compose.manager/projects/Immich/	Immich	true
+/boot/config/plugins/compose.manager/projects/LanCache/	LanCache	true
+/boot/config/plugins/compose.manager/projects/MediaDownload/	MediaDownload	true
+/boot/config/plugins/compose.manager/projects/Paperless/	Paperless	true
+/boot/config/plugins/compose.manager/projects/Servertools/	Servertools	true
+/boot/config/plugins/compose.manager/projects/Smarthome/	Smarthome	true
+/boot/config/plugins/compose.manager/projects/Streaming/	Streaming	true
+/boot/config/plugins/compose.manager/projects/gps-bridge/		true

@@ -80,3 +80,103 @@ def test_parse_shares(fixture):
     backups = next(s for s in shares if s.name == "Backups")
     assert backups.used_kib == 27283633016   # values read from the recorded fixture
     assert backups.free_kib == 5779811540
+
+
+def test_parse_proc_stat_and_cpu_percent(fixture):
+    cur = parse.parse_proc_stat(fixture("stat.txt"))
+    assert cur.total > cur.idle > 0
+    assert parse.cpu_percent(None, cur) is None
+    prev = parse.CpuTimes(total=cur.total - 1000, idle=cur.idle - 250)
+    assert parse.cpu_percent(prev, cur) == 75.0
+    assert parse.cpu_percent(cur, cur) is None          # no elapsed time
+
+
+def test_parse_meminfo(fixture):
+    mem = parse.parse_meminfo(fixture("meminfo.txt"))
+    assert mem.total_kib > mem.available_kib > 0
+    assert 0 < mem.percent < 100
+
+
+def test_parse_load(fixture):
+    load = parse.parse_load(fixture("load.txt"))
+    assert load.load1 >= 0 and load.load5 >= 0 and load.load15 >= 0
+    assert load.uptime_seconds > 60
+
+
+def test_parse_gpus(fixture):
+    gpus = parse.parse_gpus(fixture("gpu.csv"))
+    assert len(gpus) >= 1
+    gpu = gpus[0]
+    assert gpu.index == 0
+    assert "NVIDIA" in gpu.name
+    assert 0 <= gpu.util_percent <= 100
+    assert gpu.vram_total_mib > 0
+    assert gpu.vram_percent == round(gpu.vram_used_mib / gpu.vram_total_mib * 100, 1)
+    assert gpu.temp > 0 and gpu.power_w > 0
+
+
+def test_parse_gpus_empty():
+    assert parse.parse_gpus("") == []
+    assert parse.parse_gpus("No devices were found\n") == []
+
+
+def test_parse_containers(fixture):
+    containers = parse.parse_containers(fixture("docker.tsv"))
+    assert len(containers) > 40
+    by_name = {c.name: c for c in containers}
+    vorschau = by_name["buschfunk-vorschau"]
+    assert vorschau.project == "" and vorschau.service == ""
+    web = by_name["buschfunk-web-1"]
+    assert web.project == "buschfunk" and web.service == "web"
+    assert web.state in ("running", "exited", "created", "paused", "restarting", "dead")
+
+
+def test_parse_compose_ls(fixture):
+    projects = parse.parse_compose_ls(fixture("compose.json"))
+    names = {p.name for p in projects}
+    assert "buschfunk" in names
+    bf = next(p for p in projects if p.name == "buschfunk")
+    assert bf.running >= 1
+    assert any(f.endswith("docker-compose.yml") for f in bf.config_files)
+
+
+def test_parse_compose_ls_status_forms():
+    text = '[{"Name":"a","Status":"running(3)","ConfigFiles":"/x/a.yml"},' \
+           '{"Name":"b","Status":"exited(1), running(7)","ConfigFiles":"/x/b.yml,/x/b2.yml"},' \
+           '{"Name":"c","Status":"exited(2)","ConfigFiles":""}]'
+    a, b, c = parse.parse_compose_ls(text)
+    assert (a.running, b.running, c.running) == (3, 7, 0)
+    assert b.config_files == ("/x/b.yml", "/x/b2.yml")
+    assert c.config_files == ()
+    assert parse.parse_compose_ls("") == []
+
+
+def test_parse_stack_dirs(fixture):
+    stacks = parse.parse_stack_dirs(fixture("stacks.tsv"))
+    assert len(stacks) == 13
+    bf = next(s for s in stacks if s.path.rstrip("/").endswith("/Buschfunk"))
+    assert bf.name == "Buschfunk"      # the `name` file of that folder, read from the fixture
+    assert isinstance(bf.autostart, bool)
+    gps = next(s for s in stacks if s.path.rstrip("/").endswith("/gps-bridge"))
+    assert gps.name == "gps-bridge"    # empty `name` file -> folder name
+    dominion = next(s for s in stacks if s.path.rstrip("/").endswith("/Dominion"))
+    assert dominion.autostart is False  # empty `autostart` file
+
+
+def test_parse_stack_dirs_without_name_file():
+    (s,) = parse.parse_stack_dirs("/boot/config/plugins/compose.manager/projects/Foo/\t\t\n")
+    assert s.name == "Foo"            # falls back to folder name
+    assert s.autostart is False
+
+
+def test_parse_vms(fixture):
+    vms = parse.parse_vms(fixture("vms.txt"))
+    assert vms == [parse.Vm(name="Windows 11", state="shut_off")]
+
+
+def test_parse_vms_running_and_empty():
+    text = " Id   Name         State\n-----------------------------\n 3    Windows 11   running\n"
+    assert parse.parse_vms(text) == [parse.Vm(name="Windows 11", state="running")]
+    assert parse.parse_vms("") == []
+    assert parse.vm_state("in shutdown") == "in_shutdown"
+    assert parse.vm_state("weird") == "unknown"
