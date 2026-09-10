@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from unraid_ssh import parse
+from unraid_ssh import collect, parse
 
 
 def test_parse_flat_ini_strips_quotes():
@@ -180,3 +180,24 @@ def test_parse_vms_running_and_empty():
     assert parse.parse_vms("") == []
     assert parse.vm_state("in shutdown") == "in_shutdown"
     assert parse.vm_state("weird") == "unknown"
+
+
+def test_parse_inventory_and_image_digests(fixture):
+    sections = collect.split_output(fixture("inventory.txt"))
+    rows = parse.parse_inventory(sections["containers"])
+    assert rows and not rows[0].name.startswith("/")
+    by_name = {r.name: r for r in rows}
+    assert by_name["buschfunk-web-1"].image_ref == "buschfunk-web"
+    assert by_name["buschfunk-web-1"].image_id.startswith("sha256:")
+    digests = parse.parse_image_digests(sections["images"])
+    assert digests[by_name["buschfunk-web-1"].image_id] == ()          # locally built: no repo digest
+    radarr = by_name["radarr"]
+    assert all(d.startswith("sha256:") for d in digests[radarr.image_id]) and digests[radarr.image_id]
+
+
+def test_parse_remote_digests(fixture):
+    sections = collect.split_output(fixture("remote.txt"))
+    remote = parse.parse_remote_digests(sections["remote"])
+    assert "ghcr.io/esphome/esphome:stable" in remote
+    assert remote["ghcr.io/esphome/esphome:stable"].startswith("sha256:")
+    assert parse.parse_remote_digests("some/ref\t\n") == {"some/ref": None}

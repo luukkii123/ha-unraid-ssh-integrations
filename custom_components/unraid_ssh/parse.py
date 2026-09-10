@@ -397,3 +397,44 @@ def parse_vms(text: str) -> list[Vm]:
             continue
         out.append(Vm(name=parts[1], state=vm_state(parts[2])))
     return out
+
+
+# --- update inventory --------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class InventoryRow:
+    name: str                  # container name without the leading slash
+    image_ref: str             # Config.Image as written in the template/compose file
+    image_id: str              # sha256:… of the image the container runs
+
+
+def parse_inventory(text: str) -> list[InventoryRow]:
+    out: list[InventoryRow] = []
+    for line in text.splitlines():
+        parts = line.split("\t")
+        if len(parts) != 3:
+            continue
+        out.append(InventoryRow(name=parts[0].lstrip("/"), image_ref=parts[1], image_id=parts[2]))
+    return out
+
+
+def parse_image_digests(text: str) -> dict[str, tuple[str, ...]]:
+    """`<image id>\\t<repo@sha256:…,repo2@sha256:…>` → id → digests (sha part only)."""
+    out: dict[str, tuple[str, ...]] = {}
+    for line in text.splitlines():
+        image_id, _, rest = line.partition("\t")
+        if not image_id:
+            continue
+        digests = tuple(ref.split("@", 1)[1] for ref in rest.split(",") if "@" in ref)
+        out[image_id] = digests
+    return out
+
+
+def parse_remote_digests(text: str) -> dict[str, str | None]:
+    out: dict[str, str | None] = {}
+    for line in text.splitlines():
+        ref, _, digest = line.partition("\t")
+        if ref:
+            out[ref] = digest.strip() or None
+    return out

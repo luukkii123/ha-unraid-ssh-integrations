@@ -238,3 +238,42 @@ def find_container(snapshot: Snapshot, name: str) -> Container | None:
 
 def find_vm(snapshot: Snapshot, name: str) -> Vm | None:
     return next((v for v in snapshot.vms if v.name == name), None)
+
+
+# --- update inventory --------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ImageStatus:
+    container: str
+    image_ref: str
+    local_digest: str | None
+    remote_digest: str | None
+    update_available: bool | None      # None = remote unknown
+
+
+def refs_to_check(inventory: list[parse.InventoryRow], image_digests: dict[str, tuple[str, ...]]) -> list[str]:
+    """Every distinct reference worth a registry lookup, sorted for a stable command."""
+    return sorted({row.image_ref for row in inventory if image_digests.get(row.image_id)})
+
+
+def build_update_state(
+    inventory: list[parse.InventoryRow],
+    image_digests: dict[str, tuple[str, ...]],
+    remote: dict[str, str | None],
+) -> dict[str, ImageStatus]:
+    out: dict[str, ImageStatus] = {}
+    for row in inventory:
+        local = image_digests.get(row.image_id) or ()
+        if not local:
+            continue                       # locally built image: nothing to compare against
+        remote_digest = remote.get(row.image_ref)
+        available = None if remote_digest is None else remote_digest not in local
+        out[row.name] = ImageStatus(
+            container=row.name,
+            image_ref=row.image_ref,
+            local_digest=local[0],
+            remote_digest=remote_digest,
+            update_available=available,
+        )
+    return out
