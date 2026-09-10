@@ -85,6 +85,9 @@
       "mover_active": {"name": "Mover aktiv"},
       "disk_spundown": {"name": "Schlafend"}
     },
+    "button": {
+      "check_updates": {"name": "Updates jetzt prüfen"}
+    },
     "switch": {
       "container": {"name": "{container}"},
       "stack": {"name": "Stack"},

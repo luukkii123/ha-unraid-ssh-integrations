@@ -111,6 +111,9 @@
       "mover_active": {"name": "Mover active"},
       "disk_spundown": {"name": "Spun down"}
     },
+    "button": {
+      "check_updates": {"name": "Check for updates"}
+    },
     "switch": {
       "container": {"name": "{container}"},
       "stack": {"name": "Stack"},
