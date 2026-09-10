@@ -73,3 +73,13 @@ async def test_run_action_wraps_ssh_errors():
     client = _Client(error=SSHConnectError("down"))
     with pytest.raises(actions.ActionError):
         await actions.run_action(client, "true", 5)
+
+
+def test_plain_compose_keeps_odd_paths_and_needs_no_space_collapse():
+    """A double space inside a path must survive; an empty file list must not leave one."""
+    odd = Stack(name="odd", folder="", autostart=False, present=True, running=0,
+                config_files=("/tmp/a  b.yml",), containers=())
+    assert "-f '/tmp/a  b.yml'" in actions.stack_up_cmd(odd)
+    empty = Stack(name="odd", folder="", autostart=False, present=False, running=0,
+                  config_files=(), containers=())
+    assert actions.stack_down_cmd(empty) == "docker compose -p odd down"

@@ -17,6 +17,8 @@ _q = shlex.quote
 
 
 class ActionError(Exception):
+    """A command failed. `.stderr` is empty when this wraps an `SSHError`."""
+
     def __init__(self, message: str, stderr: str = "") -> None:
         super().__init__(message)
         self.stderr = stderr
@@ -44,8 +46,13 @@ def _compose_manager_cmd(stack: Stack, verb: str) -> str:
 
 
 def _plain_compose_cmd(stack: Stack, verb: str) -> str:
-    files = " ".join(f"-f {_q(f)}" for f in stack.config_files)
-    return f"docker compose -p {_q(stack.name)} {files} {verb}".replace("  ", " ")
+    # Built from parts and joined once: a global space collapse would also eat
+    # a double space inside a quoted config-file path.
+    parts = ["docker", "compose", "-p", _q(stack.name)]
+    for path in stack.config_files:
+        parts += ["-f", _q(path)]
+    parts.append(verb)  # a literal ("up -d" / "down"), never user data
+    return " ".join(parts)
 
 
 def stack_up_cmd(stack: Stack) -> str:
