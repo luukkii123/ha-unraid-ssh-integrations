@@ -65,6 +65,27 @@ def test_merge_stacks_matches_project_by_config_file_path():
     assert loose == ()
 
 
+def test_merge_stacks_keeps_containers_of_an_unknown_project():
+    """No folder, no compose project — the containers still get a stack.
+
+    Without this the containers would vanish entirely: not in any stack, not in
+    the loose tuple. `present` stays False, because nothing in `compose ls`
+    confirms the project.
+    """
+    containers = [
+        parse.Container("ghost-web-1", "running", "img", "ghost", "web"),
+        parse.Container("ghost-db-1", "exited", "img", "ghost", "db"),
+        parse.Container("standalone", "running", "nginx:alpine", "", ""),
+    ]
+    stacks, loose = model.merge_stacks([], [], containers)
+    assert len(stacks) == 1
+    ghost = stacks[0]
+    assert ghost.name == "ghost" and ghost.folder == "" and ghost.autostart is False
+    assert ghost.present is False and ghost.running == 1 and ghost.config_files == ()
+    assert {c.name for c in ghost.containers} == {"ghost-web-1", "ghost-db-1"}
+    assert [c.name for c in loose] == ["standalone"]
+
+
 def test_build_snapshot_from_recorded_output(fixture):
     sections = collect.split_output(fixture("full_output.txt"))
     snap = model.build_snapshot(sections, None)
@@ -87,6 +108,24 @@ def test_build_snapshot_from_recorded_output(fixture):
     assert model.find_disk(second, "nope") is None
     assert model.find_stack(second, "buschfunk") is not None
     assert model.find_vm(second, "Windows 11") is not None
+
+
+def test_build_snapshot_loses_no_container_when_compose_fails(fixture):
+    """`compose` unusable, `docker` fine: every container keeps a home.
+
+    Without the synthetic stacks the `gps_bridge` containers would be gone —
+    only the config-file path could have matched them to their folder, and that
+    path comes from the section that just failed.
+    """
+    sections = collect.split_output(fixture("full_output.txt"))
+    intact = model.build_snapshot(sections, None)
+    sections["compose"] = "garbage"
+    snap = model.build_snapshot(sections, None)
+    attached = sum(len(s.containers) for s in snap.stacks)
+    assert attached + len(snap.template_containers) == len(snap.containers)
+    assert len(snap.containers) == len(intact.containers)
+    assert model.find_stack(snap, "gps_bridge") is not None
+    assert model.find_stack(snap, "gps_bridge").present is False
 
 
 def test_build_snapshot_isolates_a_broken_section(fixture):
