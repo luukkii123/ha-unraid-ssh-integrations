@@ -1,0 +1,109 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Unraid SSH",
+        "description": "Address of the Unraid server. The next step shows the SSH key this integration generates for itself — no password is stored.",
+        "data": {
+          "host": "Host",
+          "port": "SSH port",
+          "name": "Name"
+        },
+        "data_description": {
+          "host": "IP address or host name of the Unraid server, without protocol; the SSH port is a separate field.",
+          "port": "Port of the SSH service on Unraid; default 22, see Settings → Management Access.",
+          "name": "Title of the entry in Home Assistant; it also becomes the prefix of every entity id, so keep it distinct from other Unraid integrations."
+        }
+      },
+      "key": {
+        "title": "Authorize the key on Unraid",
+        "description": "Run both lines once in the Unraid terminal (as root). The first survives a reboot, the second takes effect immediately. Then submit — the integration tests the connection with this key before anything is saved.\n\nFingerprint: {fingerprint}\n\n```\n{pubkeys_line}\n{authorized_line}\n```",
+        "data": {},
+        "data_description": {}
+      },
+      "reauth_confirm": {
+        "title": "Unraid rejected the connection",
+        "description": "Either the key is no longer authorized on {host}, or the server's host key changed (new fingerprint: {new_fingerprint}). Re-authorize the key with the lines below, and tick the box only if you know why the host key changed.\n\n```\n{pubkeys_line}\n{authorized_line}\n```",
+        "data": {
+          "accept_host_key": "Accept the new host key"
+        },
+        "data_description": {
+          "accept_host_key": "Trust the host key the server presents now; leave off unless Unraid was reinstalled or its SSH keys were regenerated."
+        }
+      },
+      "reconfigure": {
+        "title": "Change address",
+        "description": "New host or port; the SSH key stays the same and is tested against the new address.",
+        "data": {
+          "host": "Host",
+          "port": "SSH port"
+        },
+        "data_description": {
+          "host": "IP address or host name of the Unraid server, without protocol.",
+          "port": "Port of the SSH service on Unraid; default 22."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "The server could not be reached on that host and port.",
+      "key_rejected": "The server rejected the key — has it been added to root.pubkeys and authorized_keys?",
+      "host_key_changed": "The server's host key differs from the stored one.",
+      "not_unraid": "The connection worked, but the server does not look like Unraid (no var.ini).",
+      "key_unreadable": "The stored SSH key could not be read; remove the entry and set it up again."
+    },
+    "abort": {
+      "already_configured": "This host and port are already set up.",
+      "reauth_successful": "The connection works again.",
+      "reconfigure_successful": "The new address works.",
+      "unique_id_mismatch": "The new address belongs to a different server than this entry."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Unraid SSH options",
+        "description": "How often to poll, and how often to check images for updates.",
+        "data": {
+          "scan_interval": "Polling interval",
+          "update_interval": "Update check interval"
+        },
+        "data_description": {
+          "scan_interval": "Seconds between two SSH polls of system, disks, containers and VMs; default 30, allowed 10 to 300.",
+          "update_interval": "Hours between two checks of the container images against their registries; default 6, allowed 1 to 24. The button on the server device runs a check at any time."
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "cpu_percent": {"name": "CPU usage"},
+      "ram_percent": {"name": "Memory usage"},
+      "load_1": {"name": "Load (1 min)"},
+      "uptime": {"name": "Last boot"},
+      "array_state": {
+        "name": "Array state",
+        "state": {"started": "Started", "stopped": "Stopped", "starting": "Starting", "stopping": "Stopping", "unknown": "Unknown"}
+      },
+      "parity_progress": {"name": "Parity check progress"},
+      "parity_errors": {"name": "Parity errors"},
+      "share_used": {"name": "{share} used"},
+      "share_free": {"name": "{share} free"},
+      "gpu_util": {"name": "Utilization"},
+      "gpu_vram": {"name": "VRAM usage"},
+      "gpu_temp": {"name": "Temperature"},
+      "gpu_power": {"name": "Power"},
+      "disk_temp": {"name": "Temperature"},
+      "disk_usage": {"name": "Usage"},
+      "disk_status": {
+        "name": "Status",
+        "state": {"ok": "OK", "new": "New", "disabled": "Disabled", "invalid": "Invalid", "missing": "Missing", "not_present": "Not present", "unknown": "Unknown"}
+      }
+    },
+    "binary_sensor": {
+      "array_started": {"name": "Array started"},
+      "parity_running": {"name": "Parity check running"},
+      "mover_active": {"name": "Mover active"},
+      "disk_spundown": {"name": "Spun down"}
+    }
+  }
+}

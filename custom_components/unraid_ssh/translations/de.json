@@ -1,0 +1,86 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Unraid SSH",
+        "description": "Adresse des Unraid-Servers. Im nächsten Schritt erscheint der SSH-Schlüssel, den die Integration für sich selbst erzeugt — es wird kein Passwort gespeichert.",
+        "data": {"host": "Host", "port": "SSH-Port", "name": "Name"},
+        "data_description": {
+          "host": "IP-Adresse oder Hostname des Unraid-Servers, ohne Protokoll; der SSH-Port ist ein eigenes Feld.",
+          "port": "Port des SSH-Dienstes auf Unraid; Standard 22, siehe Einstellungen → Management Access.",
+          "name": "Titel des Eintrags in Home Assistant; er wird auch zum Präfix jeder Entity-ID — deshalb anders wählen als bei anderen Unraid-Integrationen."
+        }
+      },
+      "key": {
+        "title": "Schlüssel auf Unraid eintragen",
+        "description": "Beide Zeilen einmal im Unraid-Terminal (als root) ausführen. Die erste überlebt den Neustart, die zweite wirkt sofort. Dann absenden — die Integration prüft die Verbindung mit diesem Schlüssel, bevor etwas gespeichert wird.\n\nFingerabdruck: {fingerprint}\n\n```\n{pubkeys_line}\n{authorized_line}\n```",
+        "data": {},
+        "data_description": {}
+      },
+      "reauth_confirm": {
+        "title": "Unraid hat die Verbindung abgelehnt",
+        "description": "Entweder ist der Schlüssel auf {host} nicht mehr eingetragen, oder der Host-Key des Servers hat sich geändert (neuer Fingerabdruck: {new_fingerprint}). Schlüssel mit den Zeilen unten erneut eintragen; das Häkchen nur setzen, wenn du weißt, warum sich der Host-Key geändert hat.\n\n```\n{pubkeys_line}\n{authorized_line}\n```",
+        "data": {"accept_host_key": "Neuen Host-Key annehmen"},
+        "data_description": {"accept_host_key": "Dem Host-Key vertrauen, den der Server jetzt zeigt; aus lassen, außer Unraid wurde neu installiert oder seine SSH-Schlüssel wurden neu erzeugt."}
+      },
+      "reconfigure": {
+        "title": "Adresse ändern",
+        "description": "Neuer Host oder Port; der SSH-Schlüssel bleibt und wird gegen die neue Adresse geprüft.",
+        "data": {"host": "Host", "port": "SSH-Port"},
+        "data_description": {"host": "IP-Adresse oder Hostname des Unraid-Servers, ohne Protokoll.", "port": "Port des SSH-Dienstes auf Unraid; Standard 22."}
+      }
+    },
+    "error": {
+      "cannot_connect": "Der Server ist unter diesem Host und Port nicht erreichbar.",
+      "key_rejected": "Der Server hat den Schlüssel abgelehnt — steht er in root.pubkeys und authorized_keys?",
+      "host_key_changed": "Der Host-Key des Servers weicht vom gespeicherten ab.",
+      "not_unraid": "Die Verbindung steht, aber der Server sieht nicht nach Unraid aus (keine var.ini).",
+      "key_unreadable": "Der gespeicherte SSH-Schlüssel ist nicht lesbar; Eintrag entfernen und neu einrichten."
+    },
+    "abort": {
+      "already_configured": "Dieser Host und Port sind schon eingerichtet.",
+      "reauth_successful": "Die Verbindung funktioniert wieder.",
+      "reconfigure_successful": "Die neue Adresse funktioniert.",
+      "unique_id_mismatch": "Die neue Adresse gehört zu einem anderen Server als dieser Eintrag."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Unraid-SSH-Optionen",
+        "description": "Wie oft abgefragt wird, und wie oft die Images auf Updates geprüft werden.",
+        "data": {"scan_interval": "Abfrageintervall", "update_interval": "Update-Prüfintervall"},
+        "data_description": {
+          "scan_interval": "Sekunden zwischen zwei SSH-Abfragen von System, Platten, Containern und VMs; Standard 30, erlaubt 10 bis 300.",
+          "update_interval": "Stunden zwischen zwei Prüfungen der Container-Images gegen ihre Registries; Standard 6, erlaubt 1 bis 24. Der Knopf am Server-Gerät prüft jederzeit sofort."
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "cpu_percent": {"name": "CPU-Auslastung"},
+      "ram_percent": {"name": "RAM-Auslastung"},
+      "load_1": {"name": "Load (1 min)"},
+      "uptime": {"name": "Letzter Start"},
+      "array_state": {"name": "Array-Status", "state": {"started": "Gestartet", "stopped": "Gestoppt", "starting": "Startet", "stopping": "Stoppt", "unknown": "Unbekannt"}},
+      "parity_progress": {"name": "Parity-Check-Fortschritt"},
+      "parity_errors": {"name": "Parity-Fehler"},
+      "share_used": {"name": "{share} belegt"},
+      "share_free": {"name": "{share} frei"},
+      "gpu_util": {"name": "Auslastung"},
+      "gpu_vram": {"name": "VRAM-Belegung"},
+      "gpu_temp": {"name": "Temperatur"},
+      "gpu_power": {"name": "Leistung"},
+      "disk_temp": {"name": "Temperatur"},
+      "disk_usage": {"name": "Belegung"},
+      "disk_status": {"name": "Status", "state": {"ok": "OK", "new": "Neu", "disabled": "Deaktiviert", "invalid": "Ungültig", "missing": "Fehlt", "not_present": "Nicht vorhanden", "unknown": "Unbekannt"}}
+    },
+    "binary_sensor": {
+      "array_started": {"name": "Array gestartet"},
+      "parity_running": {"name": "Parity-Check läuft"},
+      "mover_active": {"name": "Mover aktiv"},
+      "disk_spundown": {"name": "Schlafend"}
+    }
+  }
+}
