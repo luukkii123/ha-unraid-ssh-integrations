@@ -15,7 +15,14 @@ from . import actions
 from .const import CONTAINER_ACTION_TIMEOUT, STACK_ACTION_TIMEOUT, VM_ACTION_TIMEOUT
 from .coordinator import UnraidConfigEntry, UnraidCoordinator
 from .entity import UnraidEntity, container_device, stack_device, track_new, vm_device
-from .model import Snapshot, find_container, find_stack, find_vm, stack_switchable
+from .model import (
+    Snapshot,
+    find_container,
+    find_stack_by_key,
+    find_vm,
+    stack_key,
+    stack_switchable,
+)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -81,10 +88,17 @@ def _build(coordinator: UnraidCoordinator) -> Callable[[Snapshot], dict[str, Unr
     def build(snapshot: Snapshot) -> dict[str, UnraidSwitch]:
         out: dict[str, UnraidSwitch] = {}
         for stack in snapshot.stacks:
-            device = stack_device(coordinator, stack.name)
+            device = stack_device(coordinator, stack)
             if stack_switchable(stack):
-                out[f"stack_{stack.name}"] = UnraidSwitch(
-                    coordinator, STACK, device, f"stack_{stack.name}", stack.name, find_stack,
+                # Unique id, device and lookup all on the stable key:
+                # `stack.name` changes when the stack goes down, and an entity
+                # that changes its unique id leaves the old one behind as a
+                # dead entity in every automation that used it -- while one
+                # that still looks itself up by the old name would go
+                # unavailable exactly when someone wants to switch it on.
+                key = stack_key(stack)
+                out[f"stack_{key}"] = UnraidSwitch(
+                    coordinator, STACK, device, f"stack_{key}", key, find_stack_by_key,
                     use_device_name=True,
                 )
             for c in stack.containers:

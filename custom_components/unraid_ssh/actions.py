@@ -81,10 +81,10 @@ def container_update_cmd(container: Container, stack: Stack | None) -> str:
 # --- compose stacks -----------------------------------------------------------------
 
 
-def _compose_manager_cmd(stack: Stack, verb: str) -> str:
+def _compose_manager_cmd(stack: Stack, verb: str, project: str) -> str:
     folder = stack.folder.rstrip("/")
     env = f"{folder}/.env"
-    base = f"{COMPOSE_SH} -c {verb} -d {_q(folder)} -p {_q(stack.name)}"
+    base = f"{COMPOSE_SH} -c {verb} -d {_q(folder)} -p {_q(project)}"
     return f"if [ -f {_q(env)} ]; then {base} -e {_q(env)}; else {base}; fi"
 
 
@@ -99,14 +99,30 @@ def _plain_compose_cmd(stack: Stack, verb: str) -> str:
 
 
 def stack_up_cmd(stack: Stack) -> str:
+    """Start a folder-backed stack exactly as Unraid's own button would.
+
+    `manager_name` is what the Compose Manager computes from the folder (see
+    `model.unraid_project_name`), and starting under any other name would build
+    a *second* compose project beside it: its own network, its own named
+    volumes -- a database would come up empty -- its own container names, and
+    with them a second set of entities. The stack is down whenever this runs,
+    so there is no live project name to prefer over it.
+    """
     if stack.folder:
-        return _compose_manager_cmd(stack, "up")
+        return _compose_manager_cmd(stack, "up", stack.manager_name or stack.name)
     return _plain_compose_cmd(stack, "up -d")
 
 
 def stack_down_cmd(stack: Stack) -> str:
+    """Stop what is actually running, which is `Stack.name`.
+
+    The counterpart to `stack_up_cmd`: a stack can only be switched off while
+    it runs, and while it runs `Stack.name` is the project name straight out of
+    `docker compose ls` -- including the case where somebody started it by hand
+    under a name Unraid would never have chosen.
+    """
     if stack.folder:
-        return _compose_manager_cmd(stack, "down")
+        return _compose_manager_cmd(stack, "down", stack.name)
     return _plain_compose_cmd(stack, "down")
 
 

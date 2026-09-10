@@ -222,12 +222,17 @@ class UnraidConfigFlow(ConfigFlow, domain=DOMAIN):
         except SSHKeyError:
             placeholders = _blank_placeholders(host)
             errors["base"] = "key_unreadable"
-        placeholders["new_fingerprint"] = ""
-        if offered is not None and offered != entry.data[CONF_HOST_KEY]:
-            try:
-                placeholders["new_fingerprint"] = fingerprint(offered)
-            except SSHKeyError:
-                errors["base"] = "key_unreadable"
+        # The description renders this inline, so it must never be empty --
+        # "(new fingerprint: )" was what the user got whenever the host key had
+        # not changed at all. Shown is the key that would be trusted: the one
+        # the server offers now, or the stored one when the server could not be
+        # reached.
+        shown = offered if offered is not None else entry.data[CONF_HOST_KEY]
+        try:
+            placeholders["host_key_fingerprint"] = fingerprint(shown)
+        except SSHKeyError:
+            placeholders["host_key_fingerprint"] = "unreadable"
+            errors["base"] = "key_unreadable"
 
         if user_input is not None:
             host_key = entry.data[CONF_HOST_KEY]

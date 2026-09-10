@@ -50,7 +50,7 @@ class ContainerUpdate(CoordinatorEntity[UpdateCoordinator], UpdateEntity):
         if stack is not None:
             # One stack device carries several update entities, so each one has
             # to name its container to stay distinguishable.
-            self._attr_device_info = stack_device(fast, stack.name)
+            self._attr_device_info = stack_device(fast, stack)
             self._attr_translation_key = "container_update"
             self._attr_translation_placeholders = {"container": name}
         else:

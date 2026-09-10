@@ -140,8 +140,14 @@ async def test_closed_port_raises_connect_error(keypair):
 async def test_slow_command_raises_timeout(keypair):
     private, public = keypair
 
+    release = asyncio.Event()
+
     async def handler(proc):
-        await asyncio.sleep(5)
+        # Busy until the assertion is done, and then done at once. A fixed
+        # `sleep(5)` left the server-side task still sleeping when the event
+        # loop was torn down, and asyncio printed "Task was destroyed but it is
+        # pending!" after every single test run.
+        await release.wait()
         return 0
 
     server, port, host_key = await _start(public, handler)
@@ -150,6 +156,7 @@ async def test_slow_command_raises_timeout(keypair):
         with pytest.raises(transport.SSHTimeout):
             await client.run("sleep 5", timeout=0.5)
     finally:
+        release.set()
         server.close()
         await server.wait_closed()
 

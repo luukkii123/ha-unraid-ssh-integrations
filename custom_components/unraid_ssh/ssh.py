@@ -128,7 +128,12 @@ class UnraidSSH:
         except (OSError, asyncssh.Error) as err:
             raise SSHConnectError(str(err)) from err
         finally:
+            # close() only asks; wait_closed() lets the connection's own tasks
+            # finish. Without it every poll leaves a pending task behind --
+            # "Task was destroyed but it is pending!" in the log, at the poll
+            # interval, forever.
             conn.close()
+            await conn.wait_closed()
         return CommandResult(
             exit_status=result.exit_status if result.exit_status is not None else -1,
             stdout=result.stdout if isinstance(result.stdout, str) else result.stdout.decode(),

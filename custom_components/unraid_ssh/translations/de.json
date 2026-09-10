@@ -19,7 +19,7 @@
       },
       "reauth_confirm": {
         "title": "Unraid hat die Verbindung abgelehnt",
-        "description": "Entweder ist der Schlüssel auf {host} nicht mehr eingetragen, oder der Host-Key des Servers hat sich geändert (neuer Fingerabdruck: {new_fingerprint}). Schlüssel mit den Zeilen unten erneut eintragen; das Häkchen nur setzen, wenn du weißt, warum sich der Host-Key geändert hat.\n\n```\n{pubkeys_line}\n{authorized_line}\n```",
+        "description": "Entweder ist der Schlüssel auf {host} nicht mehr eingetragen, oder der Host-Key des Servers hat sich geändert. Fingerabdruck des Host-Keys: {host_key_fingerprint}. Schlüssel mit den Zeilen unten erneut eintragen; das Häkchen nur setzen, wenn du weißt, warum sich der Host-Key geändert hat.\n\n```\n{pubkeys_line}\n{authorized_line}\n```",
         "data": {"accept_host_key": "Neuen Host-Key annehmen"},
         "data_description": {"accept_host_key": "Dem Host-Key vertrauen, den der Server jetzt zeigt; aus lassen, außer Unraid wurde neu installiert oder seine SSH-Schlüssel wurden neu erzeugt."}
       },
