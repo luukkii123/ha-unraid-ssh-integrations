@@ -6,6 +6,7 @@ import pytest
 
 from unraid_ssh import actions
 from unraid_ssh.model import Stack
+from unraid_ssh.parse import Container
 from unraid_ssh.ssh import CommandResult, SSHConnectError
 
 FOLDER = "/boot/config/plugins/compose.manager/projects/Buschfunk/"
@@ -13,6 +14,8 @@ STACK = Stack(name="buschfunk", folder=FOLDER, autostart=True, present=True, run
               config_files=("/x/docker-compose.yml",), containers=())
 ADHOC = Stack(name="adhoc", folder="", autostart=False, present=True, running=1,
               config_files=("/tmp/a.yml", "/tmp/b.yml"), containers=())
+WEB = Container("buschfunk-web-1", "running", "buschfunk-web", "buschfunk", "web")
+VORSCHAU = Container("buschfunk-vorschau", "running", "nginx:alpine", "", "")
 
 
 def test_container_commands_quote_names():
@@ -83,3 +86,32 @@ def test_plain_compose_keeps_odd_paths_and_needs_no_space_collapse():
     empty = Stack(name="odd", folder="", autostart=False, present=False, running=0,
                   config_files=(), containers=())
     assert actions.stack_down_cmd(empty) == "docker compose -p odd down"
+
+
+def test_container_update_compose_pulls_and_recreates_one_service():
+    cmd = actions.container_update_cmd(WEB, STACK)
+    assert cmd == (
+        "cd /boot/config/plugins/compose.manager/projects/Buschfunk && "
+        "if [ -f /boot/config/plugins/compose.manager/projects/Buschfunk/.env ]; then "
+        "E='--env-file /boot/config/plugins/compose.manager/projects/Buschfunk/.env'; else E=''; fi && "
+        "docker compose $E -p buschfunk -f /x/docker-compose.yml pull web && "
+        "docker compose $E -p buschfunk -f /x/docker-compose.yml up -d web"
+    )
+
+
+def test_container_update_template_uses_unraid_script():
+    assert actions.container_update_cmd(VORSCHAU, None) == (
+        "/usr/local/emhttp/plugins/dynamix.docker.manager/scripts/update_container buschfunk-vorschau"
+    )
+
+
+def test_container_update_keeps_odd_paths_and_needs_no_space_collapse():
+    """Same reason as `_plain_compose_cmd`: a double space inside a config-file
+    path must survive, so the command is joined from parts, never collapsed."""
+    odd = Stack(name="odd", folder="", autostart=False, present=True, running=1,
+                config_files=("/tmp/a  b.yml",), containers=())
+    web = Container("odd-web-1", "running", "img", "odd", "web")
+    assert actions.container_update_cmd(web, odd) == (
+        "E='' && docker compose $E -p odd -f '/tmp/a  b.yml' pull web && "
+        "docker compose $E -p odd -f '/tmp/a  b.yml' up -d web"
+    )

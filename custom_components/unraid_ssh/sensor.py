@@ -16,10 +16,11 @@ from homeassistant.components.sensor import (
 from homeassistant.const import PERCENTAGE, UnitOfInformation, UnitOfPower, UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
 from .const import ARRAY_STATES, DISK_STATUSES, VM_STATES
-from .coordinator import UnraidConfigEntry, UnraidCoordinator
+from .coordinator import UnraidConfigEntry, UnraidCoordinator, UpdateCoordinator, UpdateState
 from .entity import UnraidEntity, disk_device, gpu_device, server_device, track_new, vm_device
 from .model import Snapshot, find_disk, find_gpu, find_share, find_vm
 
@@ -108,6 +109,43 @@ class UnraidSensor(UnraidEntity, SensorEntity):
         return None if item is None else self.entity_description.value_fn(item)
 
 
+class UpdatesAvailableSensor(CoordinatorEntity[UpdateCoordinator], SensorEntity):
+    """How many containers have a newer image in the registry.
+
+    It is added unconditionally, and that is load-bearing: Home Assistant
+    re-arms a coordinator's interval only while it has listeners. The update
+    entities come and go with the inventory, so without this one permanent
+    listener the 6 h schedule would never tick again.
+    """
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "updates_available"
+    _attr_icon = "mdi:package-up"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, updates: UpdateCoordinator, fast: UnraidCoordinator) -> None:
+        super().__init__(updates)
+        self._attr_unique_id = f"{updates.entry.entry_id}_updates_available"
+        self._attr_device_info = server_device(fast)
+
+    @property
+    def native_value(self) -> int | None:
+        state: UpdateState | None = self.coordinator.data
+        if state is None:
+            return None
+        return sum(1 for s in state.images.values() if s.update_available)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        state: UpdateState | None = self.coordinator.data
+        if state is None:
+            return {}
+        return {
+            "containers": sorted(n for n, s in state.images.items() if s.update_available),
+            "checked_at": state.checked_at.isoformat() if state.checked_at else None,
+        }
+
+
 def _build(coordinator: UnraidCoordinator) -> Callable[[Snapshot], dict[str, UnraidSensor]]:
     def build(snapshot: Snapshot) -> dict[str, UnraidSensor]:
         out: dict[str, UnraidSensor] = {}
@@ -142,3 +180,4 @@ def _build(coordinator: UnraidCoordinator) -> Callable[[Snapshot], dict[str, Unr
 async def async_setup_entry(hass: HomeAssistant, entry: UnraidConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     coordinator = entry.runtime_data.coordinator
     track_new(coordinator, async_add_entities, _build(coordinator))
+    async_add_entities([UpdatesAvailableSensor(entry.runtime_data.updates, coordinator)])

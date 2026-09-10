@@ -68,6 +68,7 @@
       "array_state": {"name": "Array-Status", "state": {"started": "Gestartet", "stopped": "Gestoppt", "starting": "Startet", "stopping": "Stoppt", "unknown": "Unbekannt"}},
       "parity_progress": {"name": "Parity-Check-Fortschritt"},
       "parity_errors": {"name": "Parity-Fehler"},
+      "updates_available": {"name": "Container mit Update"},
       "share_used": {"name": "{share} belegt"},
       "share_free": {"name": "{share} frei"},
       "gpu_util": {"name": "Auslastung"},
@@ -92,6 +93,9 @@
       "container": {"name": "{container}"},
       "stack": {"name": "Stack"},
       "vm": {"name": "Strom"}
+    },
+    "update": {
+      "container_update": {"name": "{container}"}
     }
   }
 }

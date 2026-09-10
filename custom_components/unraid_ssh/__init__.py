@@ -21,9 +21,15 @@ from .coordinator import (
 )
 from .ssh import SSHKeyError
 
-# Platform.UPDATE joins this list together with update.py: forwarding a
-# platform whose module does not exist makes setup fail.
-PLATFORMS: list[Platform] = [Platform.BINARY_SENSOR, Platform.BUTTON, Platform.SENSOR, Platform.SWITCH]
+# Every entry here needs its module: forwarding a platform whose module does
+# not exist makes setup fail.
+PLATFORMS: list[Platform] = [
+    Platform.BINARY_SENSOR,
+    Platform.BUTTON,
+    Platform.SENSOR,
+    Platform.SWITCH,
+    Platform.UPDATE,
+]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: UnraidConfigEntry) -> bool:

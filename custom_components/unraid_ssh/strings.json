@@ -88,6 +88,7 @@
       },
       "parity_progress": {"name": "Parity check progress"},
       "parity_errors": {"name": "Parity errors"},
+      "updates_available": {"name": "Containers with updates"},
       "share_used": {"name": "{share} used"},
       "share_free": {"name": "{share} free"},
       "gpu_util": {"name": "Utilization"},
@@ -118,6 +119,9 @@
       "container": {"name": "{container}"},
       "stack": {"name": "Stack"},
       "vm": {"name": "Power"}
+    },
+    "update": {
+      "container_update": {"name": "{container}"}
     }
   }
 }
