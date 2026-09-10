@@ -140,8 +140,12 @@ class UpdatesAvailableSensor(CoordinatorEntity[UpdateCoordinator], SensorEntity)
         state: UpdateState | None = self.coordinator.data
         if state is None:
             return {}
+        names = sorted(n for n, s in state.images.items() if s.update_available)
         return {
-            "containers": sorted(n for n, s in state.images.items() if s.update_available),
+            # Capped: this list goes into the state machine and, on every
+            # change, into the recorder database. The count is the state; the
+            # names are a convenience, and twenty of them are enough for that.
+            "containers": names[:20],
             "checked_at": state.checked_at.isoformat() if state.checked_at else None,
         }
 

@@ -89,13 +89,40 @@ def test_plain_compose_keeps_odd_paths_and_needs_no_space_collapse():
 
 
 def test_container_update_compose_pulls_and_recreates_one_service():
+    """The optional --env-file rides in the positional parameters.
+
+    `set --` leaves none, and `"$@"` then expands to zero words -- while a
+    shell variable would have needed to stay unquoted to do the same, which
+    would split any path with a space. Everything is shell-quoted; nothing in
+    this command depends on a path being harmless.
+    """
     cmd = actions.container_update_cmd(WEB, STACK)
     assert cmd == (
-        "cd /boot/config/plugins/compose.manager/projects/Buschfunk && "
         "if [ -f /boot/config/plugins/compose.manager/projects/Buschfunk/.env ]; then "
-        "E='--env-file /boot/config/plugins/compose.manager/projects/Buschfunk/.env'; else E=''; fi && "
-        "docker compose $E -p buschfunk -f /x/docker-compose.yml pull web && "
-        "docker compose $E -p buschfunk -f /x/docker-compose.yml up -d web"
+        "set -- --env-file /boot/config/plugins/compose.manager/projects/Buschfunk/.env; "
+        "else set --; fi && "
+        "cd /boot/config/plugins/compose.manager/projects/Buschfunk && "
+        'docker compose "$@" -p buschfunk -f /x/docker-compose.yml pull web && '
+        'docker compose "$@" -p buschfunk -f /x/docker-compose.yml up -d web'
+    )
+
+
+def test_container_update_quotes_a_folder_with_a_space():
+    """A compose.manager folder with a space must stay one word everywhere:
+    in the `[ -f ... ]` test, in the `set --` line and in `cd`."""
+    folder = "/mnt/user/appdata/Claude Station/"
+    stack = Stack(name="claude-station", folder=folder, autostart=True, present=True, running=1,
+                  config_files=("/mnt/user/appdata/Claude Station/docker-compose.yml",), containers=())
+    web = Container("claude-station-web-1", "running", "img", "claude-station", "web")
+    assert actions.container_update_cmd(web, stack) == (
+        "if [ -f '/mnt/user/appdata/Claude Station/.env' ]; then "
+        "set -- --env-file '/mnt/user/appdata/Claude Station/.env'; "
+        "else set --; fi && "
+        "cd '/mnt/user/appdata/Claude Station' && "
+        'docker compose "$@" -p claude-station '
+        "-f '/mnt/user/appdata/Claude Station/docker-compose.yml' pull web && "
+        'docker compose "$@" -p claude-station '
+        "-f '/mnt/user/appdata/Claude Station/docker-compose.yml' up -d web"
     )
 
 
@@ -105,13 +132,14 @@ def test_container_update_template_uses_unraid_script():
     )
 
 
-def test_container_update_keeps_odd_paths_and_needs_no_space_collapse():
-    """Same reason as `_plain_compose_cmd`: a double space inside a config-file
-    path must survive, so the command is joined from parts, never collapsed."""
+def test_container_update_without_a_folder_is_plain_compose():
+    """No compose.manager folder: no .env to look for and nowhere to `cd` to.
+    And, same reason as in `_plain_compose_cmd`, a double space inside a
+    config-file path must survive -- the command is joined from parts."""
     odd = Stack(name="odd", folder="", autostart=False, present=True, running=1,
                 config_files=("/tmp/a  b.yml",), containers=())
     web = Container("odd-web-1", "running", "img", "odd", "web")
     assert actions.container_update_cmd(web, odd) == (
-        "E='' && docker compose $E -p odd -f '/tmp/a  b.yml' pull web && "
-        "docker compose $E -p odd -f '/tmp/a  b.yml' up -d web"
+        "docker compose -p odd -f '/tmp/a  b.yml' pull web && "
+        "docker compose -p odd -f '/tmp/a  b.yml' up -d web"
     )

@@ -44,6 +44,12 @@ def container_update_cmd(container: Container, stack: Stack | None) -> str:
     must not be reconfigured (spec, section 6). `pull` / `up -d <service>` with
     exactly the files it was started from replaces only that one service.
 
+    Why the positional parameters and not a variable: the `--env-file` argument
+    is optional, so it has to expand to *nothing* when there is no `.env`. A
+    shell variable can only do that unquoted (`$E`), and unquoted means a folder
+    with a space splits into two words -- this runs as root over SSH. `set --`
+    plus `"$@"` is the POSIX way: quoted, and still zero words when empty.
+
     A compose stack without config files cannot be updated this way at all --
     `docker compose -p X pull svc` without any `-f` answers "no configuration
     file provided". `model.container_updatable` is what keeps that command from
@@ -53,22 +59,23 @@ def container_update_cmd(container: Container, stack: Stack | None) -> str:
         return f"{UPDATE_CONTAINER_SH} {_q(container.name)}"
     # Built from parts and joined once, like _plain_compose_cmd below: a global
     # space collapse would also eat a double space inside a quoted path.
-    parts = ["docker", "compose", "$E", "-p", _q(stack.name)]
+    parts = ["docker", "compose"]
+    if stack.folder:
+        parts.append('"$@"')          # the --env-file argument, or nothing
+    parts += ["-p", _q(stack.name)]
     for path in stack.config_files:
         parts += ["-f", _q(path)]
     compose = " ".join(parts)
-    if stack.folder:
-        folder = stack.folder.rstrip("/")
-        env = f"{folder}/.env"
-        prefix = (
-            f"cd {_q(folder)} && "
-            f"if [ -f {_q(env)} ]; then E='--env-file {env}'; else E=''; fi && "
-        )
-    else:
-        # No compose.manager folder: no .env to look for, but $E must still expand.
-        prefix = "E='' && "
     service = _q(container.service)
-    return f"{prefix}{compose} pull {service} && {compose} up -d {service}"
+    run = f"{compose} pull {service} && {compose} up -d {service}"
+    if not stack.folder:
+        return run                    # no folder: no .env to look for, nowhere to cd
+    folder = stack.folder.rstrip("/")
+    env = _q(f"{folder}/.env")
+    return (
+        f"if [ -f {env} ]; then set -- --env-file {env}; else set --; fi && "
+        f"cd {_q(folder)} && {run}"
+    )
 
 
 # --- compose stacks -----------------------------------------------------------------

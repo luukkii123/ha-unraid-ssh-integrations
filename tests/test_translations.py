@@ -54,3 +54,13 @@ def test_enum_states_match_the_constants():
 def test_switch_keys_are_translated():
     switch = _load("strings.json")["entity"]["switch"]
     assert {"container", "stack", "vm"} <= set(switch)
+
+
+def test_update_and_counter_keys_are_translated():
+    """Two names for the update entity: on a stack device it must say which
+    container it belongs to, on the container's own device that would just
+    repeat the device name. Both keys must exist in every file."""
+    entity = _load("strings.json")["entity"]
+    assert {"container_update", "image_update"} <= set(entity["update"])
+    assert "updates_available" in entity["sensor"]
+

@@ -121,7 +121,8 @@
       "vm": {"name": "Power"}
     },
     "update": {
-      "container_update": {"name": "{container}"}
+      "container_update": {"name": "{container}"},
+      "image_update": {"name": "Image update"}
     }
   }
 }
