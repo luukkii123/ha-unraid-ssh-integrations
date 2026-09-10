@@ -15,7 +15,7 @@ from . import actions
 from .const import CONTAINER_ACTION_TIMEOUT, STACK_ACTION_TIMEOUT, VM_ACTION_TIMEOUT
 from .coordinator import UnraidConfigEntry, UnraidCoordinator
 from .entity import UnraidEntity, container_device, stack_device, track_new, vm_device
-from .model import Snapshot, find_container, find_stack, find_vm
+from .model import Snapshot, find_container, find_stack, find_vm, stack_switchable
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -65,7 +65,10 @@ class UnraidSwitch(UnraidEntity, SwitchEntity):
             await actions.run_action(self.coordinator.client, build(item), self.entity_description.timeout)
         except actions.ActionError as err:
             raise HomeAssistantError(f"unraid_ssh: {err}") from err
-        await self.coordinator.async_request_refresh()
+        finally:
+            # Also after a failure: a `stack up` that ran into its timeout has
+            # very likely started containers, and the state must not lag behind.
+            await self.coordinator.async_request_refresh()
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         await self._run(self.entity_description.on_cmd)
@@ -79,7 +82,11 @@ def _build(coordinator: UnraidCoordinator) -> Callable[[Snapshot], dict[str, Unr
         out: dict[str, UnraidSwitch] = {}
         for stack in snapshot.stacks:
             device = stack_device(coordinator, stack.name)
-            out[f"stack_{stack.name}"] = UnraidSwitch(coordinator, STACK, device, f"stack_{stack.name}", stack.name, find_stack)
+            if stack_switchable(stack):
+                out[f"stack_{stack.name}"] = UnraidSwitch(
+                    coordinator, STACK, device, f"stack_{stack.name}", stack.name, find_stack,
+                    use_device_name=True,
+                )
             for c in stack.containers:
                 out[f"container_{c.name}"] = UnraidSwitch(
                     coordinator, CONTAINER, device, f"container_{c.name}", c.name, find_container, {"container": c.name}
@@ -87,7 +94,7 @@ def _build(coordinator: UnraidCoordinator) -> Callable[[Snapshot], dict[str, Unr
         for c in snapshot.template_containers:
             out[f"container_{c.name}"] = UnraidSwitch(
                 coordinator, CONTAINER, container_device(coordinator, c), f"container_{c.name}", c.name, find_container,
-                {"container": c.name},
+                use_device_name=True,
             )
         for vm in snapshot.vms:
             out[f"vm_{vm.name}"] = UnraidSwitch(coordinator, VM, vm_device(coordinator, vm), f"vm_{vm.name}", vm.name, find_vm)

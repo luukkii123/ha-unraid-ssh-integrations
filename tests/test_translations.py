@@ -35,3 +35,22 @@ def test_every_data_field_has_a_description():
             data = body.get("data", {})
             desc = body.get("data_description", {})
             assert set(data) == set(desc), f"{flow}.{step}: data {set(data)} vs data_description {set(desc)}"
+
+
+def test_enum_states_match_the_constants():
+    """Every ENUM sensor's options come from const; the texts must cover exactly
+    those. A missing state shows as the raw value, a surplus one is dead text."""
+    from unraid_ssh import const
+
+    sensor = _load("strings.json")["entity"]["sensor"]
+    for key, states in (
+        ("array_state", const.ARRAY_STATES),
+        ("disk_status", const.DISK_STATUSES),
+        ("vm_state", const.VM_STATES),
+    ):
+        assert set(sensor[key]["state"]) == set(states), key
+
+
+def test_switch_keys_are_translated():
+    switch = _load("strings.json")["entity"]["switch"]
+    assert {"container", "stack", "vm"} <= set(switch)

@@ -137,3 +137,30 @@ def test_build_snapshot_isolates_a_broken_section(fixture):
     assert snap.cpu_times is None
     assert snap.gpus == ()
     assert snap.array is not None                        # the rest survived
+
+
+def test_stack_switchable_only_with_a_compose_file():
+    """A stack that only exists through container labels gets no on/off switch.
+
+    `docker compose -p <name> down` would work there (it goes by label), `up -d`
+    would not — there is no configuration file. Switching off would empty the
+    project, and with no members left `merge_stacks` drops the stack entirely:
+    switch, device and container switches gone for good. So the switch is not
+    offered in the first place.
+    """
+    containers = [parse.Container("ghost-web-1", "running", "img", "ghost", "web")]
+    ghost = model.merge_stacks([], [], containers)[0][0]
+    assert ghost.folder == "" and ghost.config_files == ()
+    assert model.stack_switchable(ghost) is False
+
+    # A folder from compose.manager is enough (a downed stack has no config_files).
+    dirs = [parse.StackDir(path="/p/Downed/", name="downed", autostart=False)]
+    downed = model.merge_stacks(dirs, [], [])[0][0]
+    assert downed.folder and downed.config_files == ()
+    assert model.stack_switchable(downed) is True
+
+    # And so is a compose project without a folder.
+    projects = [parse.ComposeProject(name="adhoc", status="running(1)", running=1, config_files=("/tmp/a.yml",))]
+    adhoc = model.merge_stacks([], projects, [])[0][0]
+    assert adhoc.folder == "" and adhoc.config_files
+    assert model.stack_switchable(adhoc) is True

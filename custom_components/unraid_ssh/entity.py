@@ -80,14 +80,23 @@ class UnraidEntity(CoordinatorEntity[UnraidCoordinator]):
         item_key: Any = None,
         finder: Callable[[Snapshot, Any], Any] | None = None,
         placeholders: dict[str, str] | None = None,
+        *,
+        use_device_name: bool = False,
     ) -> None:
         super().__init__(coordinator)
         self.entity_description = description
         self._attr_unique_id = f"{coordinator.entry.entry_id}_{unique_suffix}"
         self._attr_device_info = device
-        self._attr_translation_key = description.translation_key or description.key
-        if placeholders:
-            self._attr_translation_placeholders = placeholders
+        if use_device_name:
+            # The main entity of a device: name None (with has_entity_name) makes
+            # HA show the device name alone. A translated name here would repeat
+            # it -- "nginx nginx", "Stack buschfunk Stack" -- and that repetition
+            # is baked into the entity id at creation time.
+            self._attr_name = None
+        else:
+            self._attr_translation_key = description.translation_key or description.key
+            if placeholders:
+                self._attr_translation_placeholders = placeholders
         # HA supplies a default icon per device class, but not for ENUM.
         if getattr(description, "device_class", None) in (None, SensorDeviceClass.ENUM):
             self._attr_icon = ENTITY_ICONS.get(description.key)
