@@ -42,3 +42,23 @@ def test_split_output_keeps_empty_sections():
     out = collect.split_output("@@@ var\nNAME=\"x\"\n@@@ gpu\n@@@ end\n")
     assert out["gpu"] == ""
     assert out["var"] == 'NAME="x"\n'
+
+
+def test_inventory_command_shape():
+    cmd = collect.build_inventory_command()
+    assert "echo '@@@ containers'" in cmd and "echo '@@@ images'" in cmd and cmd.rstrip().endswith("echo '@@@ end'")
+    # A literal `\t` stays literal in `docker inspect --format` (recorded fixture,
+    # docker 29.5.3), so the separator must be the template action `{{"\t"}}`.
+    assert (
+        "docker inspect --format "
+        "'{{.Name}}{{\"\\t\"}}{{.Config.Image}}{{\"\\t\"}}{{.Image}}'" in cmd
+    )
+    assert "docker image inspect --format '{{.Id}}{{\"\\t\"}}{{join .RepoDigests \",\"}}'" in cmd
+
+
+def test_remote_digest_command_quotes_refs_and_uses_timeout():
+    cmd = collect.build_remote_digest_command(["lscr.io/linuxserver/radarr:latest", "odd ref"])
+    assert cmd.startswith("echo '@@@ remote'; for r in lscr.io/linuxserver/radarr:latest 'odd ref'; do ")
+    assert "timeout 30 docker buildx imagetools inspect \"$r\" --format '{{.Manifest.Digest}}'" in cmd
+    assert cmd.rstrip().endswith("done; echo '@@@ end'")
+    assert collect.build_remote_digest_command([]).startswith("echo '@@@ remote'; echo '@@@ end'")

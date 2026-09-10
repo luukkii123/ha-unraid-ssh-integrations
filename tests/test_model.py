@@ -164,3 +164,16 @@ def test_stack_switchable_only_with_a_compose_file():
     adhoc = model.merge_stacks([], projects, [])[0][0]
     assert adhoc.folder == "" and adhoc.config_files
     assert model.stack_switchable(adhoc) is True
+
+
+def test_refs_to_check_and_update_state():
+    inv = [parse.InventoryRow("a", "img/a:latest", "sha256:1"), parse.InventoryRow("b", "img/a:latest", "sha256:1"),
+           parse.InventoryRow("c", "local-built", "sha256:2"), parse.InventoryRow("d", "img/d", "sha256:3")]
+    digests = {"sha256:1": ("sha256:aaa",), "sha256:2": (), "sha256:3": ("sha256:ddd", "sha256:ddd2")}
+    assert model.refs_to_check(inv, digests) == ["img/a:latest", "img/d"]
+    state = model.build_update_state(inv, digests, {"img/a:latest": "sha256:aaa", "img/d": "sha256:new"})
+    assert set(state) == {"a", "b", "d"}                     # c has no digest -> no entity
+    assert state["a"].update_available is False and state["a"].local_digest == "sha256:aaa"
+    assert state["d"].update_available is True and state["d"].remote_digest == "sha256:new"
+    unknown = model.build_update_state(inv, digests, {})
+    assert unknown["a"].remote_digest is None and unknown["a"].update_available is None
