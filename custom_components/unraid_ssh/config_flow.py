@@ -11,7 +11,13 @@ from typing import Any
 
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult, OptionsFlow
+from homeassistant.config_entries import (
+    ConfigEntry,
+    ConfigFlow,
+    ConfigFlowResult,
+    OptionsFlow,
+)
+from homeassistant.core import callback
 from homeassistant.helpers.selector import (
     BooleanSelector,
     NumberSelector,
@@ -126,6 +132,9 @@ class UnraidConfigFlow(ConfigFlow, domain=DOMAIN):
         self._private_key = ""
         self._public_key = ""
         self._host_key = ""
+        #: Host key fetched when the reauth form was first rendered — the one
+        #: whose fingerprint the user is looking at while ticking the box.
+        self._offered_host_key: str | None = None
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         errors: dict[str, str] = {}
@@ -198,26 +207,32 @@ class UnraidConfigFlow(ConfigFlow, domain=DOMAIN):
         entry = self._get_reauth_entry()
         host, port = entry.data[CONF_HOST], int(entry.data.get(CONF_PORT, DEFAULT_PORT))
         errors: dict[str, str] = {}
+        if user_input is None:
+            # Fetch exactly once, while the form is being built. Ticking the box
+            # must trust the key whose fingerprint the user was shown, not
+            # whatever the server offers a minute later.
+            try:
+                self._offered_host_key = await fetch_host_key(host, port)
+            except (SSHConnectError, SSHTimeout):
+                self._offered_host_key = None
+        offered = self._offered_host_key
+
         try:
             placeholders = _key_placeholders(entry.data[CONF_PUBLIC_KEY], host)
         except SSHKeyError:
             placeholders = _blank_placeholders(host)
             errors["base"] = "key_unreadable"
         placeholders["new_fingerprint"] = ""
-        try:
-            current_host_key = await fetch_host_key(host, port)
-        except (SSHConnectError, SSHTimeout):
-            current_host_key = entry.data[CONF_HOST_KEY]
-        if current_host_key != entry.data[CONF_HOST_KEY]:
+        if offered is not None and offered != entry.data[CONF_HOST_KEY]:
             try:
-                placeholders["new_fingerprint"] = fingerprint(current_host_key)
+                placeholders["new_fingerprint"] = fingerprint(offered)
             except SSHKeyError:
                 errors["base"] = "key_unreadable"
 
         if user_input is not None:
             host_key = entry.data[CONF_HOST_KEY]
-            if user_input.get(CONF_ACCEPT_HOST_KEY):
-                host_key = current_host_key
+            if user_input.get(CONF_ACCEPT_HOST_KEY) and offered is not None:
+                host_key = offered
             try:
                 await validate(host, port, entry.data[CONF_PRIVATE_KEY], host_key)
             except SSHAuthError:
@@ -247,6 +262,13 @@ class UnraidConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             host = str(user_input[CONF_HOST]).strip()
             port = int(user_input[CONF_PORT])
+            # The unique id IS the address, so changing the address changes it.
+            # Check before dialling: an address another entry already owns must
+            # not cost two SSH connections first.
+            new_unique_id = f"{host}:{port}"
+            if new_unique_id != entry.unique_id:
+                await self.async_set_unique_id(new_unique_id)
+                self._abort_if_unique_id_configured()
             try:
                 host_key = await fetch_host_key(host, port)
                 await validate(host, port, entry.data[CONF_PRIVATE_KEY], host_key)
@@ -254,15 +276,17 @@ class UnraidConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors["base"] = "key_rejected"
             except (SSHConnectError, SSHTimeout):
                 errors["base"] = "cannot_connect"
+            except SSHHostKeyError:
+                errors["base"] = "host_key_changed"
             except SSHKeyError:
                 errors["base"] = "key_unreadable"
             except NotUnraid:
                 errors["base"] = "not_unraid"
             else:
-                await self.async_set_unique_id(f"{host}:{port}")
-                self._abort_if_unique_id_mismatch()
                 return self.async_update_reload_and_abort(
-                    entry, data_updates={CONF_HOST: host, CONF_PORT: port, CONF_HOST_KEY: host_key}
+                    entry,
+                    unique_id=new_unique_id,
+                    data_updates={CONF_HOST: host, CONF_PORT: port, CONF_HOST_KEY: host_key},
                 )
         schema = vol.Schema(
             {
@@ -277,7 +301,8 @@ class UnraidConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(step_id="reconfigure", data_schema=schema, errors=errors)
 
     @staticmethod
-    def async_get_options_flow(entry: Any) -> "UnraidOptionsFlow":
+    @callback
+    def async_get_options_flow(entry: ConfigEntry) -> "UnraidOptionsFlow":
         return UnraidOptionsFlow()
 
 

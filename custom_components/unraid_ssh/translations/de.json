@@ -40,8 +40,10 @@
     "abort": {
       "already_configured": "Dieser Host und Port sind schon eingerichtet.",
       "reauth_successful": "Die Verbindung funktioniert wieder.",
-      "reconfigure_successful": "Die neue Adresse funktioniert.",
-      "unique_id_mismatch": "Die neue Adresse gehört zu einem anderen Server als dieser Eintrag."
+      "reconfigure_successful": "Die neue Adresse funktioniert."
+    },
+    "create_entry": {
+      "default": "Verbunden mit {server} (Unraid {version})."
     }
   },
   "options": {
