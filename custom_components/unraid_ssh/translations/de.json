@@ -76,13 +76,19 @@
       "gpu_power": {"name": "Leistung"},
       "disk_temp": {"name": "Temperatur"},
       "disk_usage": {"name": "Belegung"},
-      "disk_status": {"name": "Status", "state": {"ok": "OK", "new": "Neu", "disabled": "Deaktiviert", "invalid": "Ungültig", "missing": "Fehlt", "not_present": "Nicht vorhanden", "unknown": "Unbekannt"}}
+      "disk_status": {"name": "Status", "state": {"ok": "OK", "new": "Neu", "disabled": "Deaktiviert", "invalid": "Ungültig", "missing": "Fehlt", "not_present": "Nicht vorhanden", "unknown": "Unbekannt"}},
+      "vm_state": {"name": "Zustand", "state": {"running": "Läuft", "shut_off": "Aus", "paused": "Pausiert", "in_shutdown": "Fährt herunter", "crashed": "Abgestürzt", "pmsuspended": "Ruhezustand", "idle": "Leerlauf", "unknown": "Unbekannt"}}
     },
     "binary_sensor": {
       "array_started": {"name": "Array gestartet"},
       "parity_running": {"name": "Parity-Check läuft"},
       "mover_active": {"name": "Mover aktiv"},
       "disk_spundown": {"name": "Schlafend"}
+    },
+    "switch": {
+      "container": {"name": "{container}"},
+      "stack": {"name": "Stack"},
+      "vm": {"name": "Strom"}
     }
   }
 }
