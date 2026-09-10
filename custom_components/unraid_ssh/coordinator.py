@@ -1,9 +1,15 @@
-"""The fast coordinator: one SSH round trip per interval, one Snapshot."""
+"""Two coordinators.
+
+The fast one: one SSH round trip per interval, one Snapshot.
+The slow one: the container image inventory plus one registry lookup per
+unique image -- minutes, not seconds, so it runs on its own schedule.
+"""
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 import logging
 from typing import Any
 
@@ -11,20 +17,31 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 
-from .collect import TruncatedOutput, build_state_command, split_output
+from .collect import (
+    TruncatedOutput,
+    build_inventory_command,
+    build_remote_digest_command,
+    build_state_command,
+    split_output,
+)
 from .const import (
     CONF_HOST,
     CONF_HOST_KEY,
     CONF_PORT,
     CONF_PRIVATE_KEY,
     CONF_SCAN_INTERVAL,
+    CONF_UPDATE_INTERVAL,
     DEFAULT_PORT,
     DEFAULT_SCAN_INTERVAL,
+    DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
     POLL_TIMEOUT,
+    UPDATE_TIMEOUT,
 )
-from .model import Snapshot, build_snapshot
+from .model import ImageStatus, Snapshot, build_snapshot, build_update_state, refs_to_check
+from .parse import parse_image_digests, parse_inventory, parse_remote_digests
 from .ssh import SSHAuthError, SSHError, SSHHostKeyError, UnraidSSH
 
 _LOGGER = logging.getLogger(__name__)
@@ -37,7 +54,7 @@ UnraidConfigEntry = ConfigEntry["UnraidRuntime"]
 class UnraidRuntime:
     client: UnraidSSH
     coordinator: "UnraidCoordinator"
-    updates: Any = None          # UpdateCoordinator, added in stage 3
+    updates: "UpdateCoordinator | None" = None   # set in async_setup_entry
 
 
 def setting(entry: ConfigEntry, key: str, default: Any) -> Any:
@@ -87,3 +104,52 @@ class UnraidCoordinator(DataUpdateCoordinator[Snapshot]):
             _LOGGER.warning("unraid_ssh: sections unparsable on %s: %s", self.host, ", ".join(sorted(new_failures)))
         self._reported_failed = set(snapshot.failed)
         return snapshot
+
+
+@dataclass
+class UpdateState:
+    images: dict[str, ImageStatus]
+    checked_at: datetime | None
+
+
+class UpdateCoordinator(DataUpdateCoordinator[UpdateState]):
+    """Slow: inventory, then one registry lookup per unique image, sequentially."""
+
+    def __init__(self, hass: HomeAssistant, entry: ConfigEntry, client: UnraidSSH) -> None:
+        super().__init__(
+            hass,
+            _LOGGER,
+            name=f"{DOMAIN} updates {entry.title}",
+            update_interval=timedelta(hours=int(setting(entry, CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL))),
+            config_entry=entry,
+        )
+        self.entry = entry
+        self.client = client
+        self._lock = asyncio.Lock()
+
+    async def async_check_now(self) -> None:
+        """Button: run a check; if one is running, wait for it instead of starting another."""
+        if self._lock.locked():
+            async with self._lock:
+                return
+        await self.async_refresh()
+
+    async def _async_update_data(self) -> UpdateState:
+        async with self._lock:
+            try:
+                inventory_result = await self.client.run(build_inventory_command(), timeout=POLL_TIMEOUT * 3)
+                sections = split_output(inventory_result.stdout)
+                inventory = parse_inventory(sections.get("containers", ""))
+                digests = parse_image_digests(sections.get("images", ""))
+                refs = refs_to_check(inventory, digests)
+                remote_result = await self.client.run(build_remote_digest_command(refs), timeout=UPDATE_TIMEOUT)
+                remote = parse_remote_digests(split_output(remote_result.stdout).get("remote", ""))
+            except (SSHAuthError, SSHHostKeyError) as err:
+                raise ConfigEntryAuthFailed(str(err)) from err
+            except (SSHError, TruncatedOutput) as err:
+                raise UpdateFailed(f"update check: {err}") from err
+            images = build_update_state(inventory, digests, remote)
+            unknown = sorted(name for name, s in images.items() if s.remote_digest is None)
+            if unknown:
+                _LOGGER.info("unraid_ssh: no registry answer for %d image(s): %s", len(unknown), ", ".join(unknown[:10]))
+            return UpdateState(images=images, checked_at=dt_util.utcnow())
