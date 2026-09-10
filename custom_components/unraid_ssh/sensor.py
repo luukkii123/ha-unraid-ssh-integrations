@@ -1,4 +1,4 @@
-"""Sensors on the server, GPU, disk and share level."""
+"""Sensors on the server, GPU, disk, share and VM level."""
 
 from __future__ import annotations
 
@@ -18,10 +18,10 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util import dt as dt_util
 
-from .const import ARRAY_STATES, DISK_STATUSES
+from .const import ARRAY_STATES, DISK_STATUSES, VM_STATES
 from .coordinator import UnraidConfigEntry, UnraidCoordinator
-from .entity import UnraidEntity, disk_device, gpu_device, server_device, track_new
-from .model import Snapshot, find_disk, find_gpu, find_share
+from .entity import UnraidEntity, disk_device, gpu_device, server_device, track_new, vm_device
+from .model import Snapshot, find_disk, find_gpu, find_share, find_vm
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -93,6 +93,12 @@ SHARE: tuple[UnraidSensorDescription, ...] = (
 )
 
 
+VM: tuple[UnraidSensorDescription, ...] = (
+    UnraidSensorDescription(key="vm_state", device_class=SensorDeviceClass.ENUM, options=list(VM_STATES),
+                            value_fn=lambda v: v.state),
+)
+
+
 class UnraidSensor(UnraidEntity, SensorEntity):
     entity_description: UnraidSensorDescription
 
@@ -124,6 +130,10 @@ def _build(coordinator: UnraidCoordinator) -> Callable[[Snapshot], dict[str, Unr
                     continue
                 key = f"{desc.key}_{disk.name}"
                 out[key] = UnraidSensor(coordinator, desc, disk_device(coordinator, disk), key, disk.name, find_disk)
+        for vm in snapshot.vms:
+            for desc in VM:
+                key = f"{desc.key}_{vm.name}"
+                out[key] = UnraidSensor(coordinator, desc, vm_device(coordinator, vm), key, vm.name, find_vm)
         return out
 
     return build

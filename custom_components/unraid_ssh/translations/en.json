@@ -99,6 +99,10 @@
       "disk_status": {
         "name": "Status",
         "state": {"ok": "OK", "new": "New", "disabled": "Disabled", "invalid": "Invalid", "missing": "Missing", "not_present": "Not present", "unknown": "Unknown"}
+      },
+      "vm_state": {
+        "name": "State",
+        "state": {"running": "Running", "shut_off": "Shut off", "paused": "Paused", "in_shutdown": "Shutting down", "crashed": "Crashed", "pmsuspended": "Suspended", "idle": "Idle", "unknown": "Unknown"}
       }
     },
     "binary_sensor": {
@@ -106,6 +110,11 @@
       "parity_running": {"name": "Parity check running"},
       "mover_active": {"name": "Mover active"},
       "disk_spundown": {"name": "Spun down"}
+    },
+    "switch": {
+      "container": {"name": "{container}"},
+      "stack": {"name": "Stack"},
+      "vm": {"name": "Power"}
     }
   }
 }
