@@ -36,6 +36,10 @@ class SSHTimeout(SSHError):
     """Connect or command exceeded its timeout."""
 
 
+class SSHKeyError(SSHError):
+    """A stored or given key could not be parsed."""
+
+
 @dataclass
 class CommandResult:
     exit_status: int
@@ -52,7 +56,10 @@ def generate_keypair() -> tuple[str, str]:
 
 
 def fingerprint(public_key_line: str) -> str:
-    return asyncssh.import_public_key(public_key_line).get_fingerprint()
+    try:
+        return asyncssh.import_public_key(public_key_line).get_fingerprint()
+    except asyncssh.KeyImportError as err:
+        raise SSHKeyError(f"public key unreadable: {err}") from err
 
 
 async def fetch_host_key(host: str, port: int) -> str:
@@ -74,7 +81,10 @@ class UnraidSSH:
     def __init__(self, host: str, port: int, private_key: str, host_key: str) -> None:
         self._host = host
         self._port = port
-        self._client_key = asyncssh.import_private_key(private_key)
+        try:
+            self._client_key = asyncssh.import_private_key(private_key)
+        except asyncssh.KeyImportError as err:
+            raise SSHKeyError(f"private key unreadable: {err}") from err
         self._host_key = host_key
 
     async def _connect(self) -> asyncssh.SSHClientConnection:
@@ -115,7 +125,7 @@ class UnraidSSH:
             result = await asyncio.wait_for(conn.run(command, check=False), timeout)
         except asyncio.TimeoutError as err:
             raise SSHTimeout(f"command timed out after {timeout}s") from err
-        except asyncssh.Error as err:
+        except (OSError, asyncssh.Error) as err:
             raise SSHConnectError(str(err)) from err
         finally:
             conn.close()
