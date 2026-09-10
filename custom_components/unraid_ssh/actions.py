@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import shlex
 
-from .const import COMPOSE_SH
+from .const import COMPOSE_SH, UPDATE_CONTAINER_SH
 from .model import Stack
+from .parse import Container
 from .ssh import SSHError
 
 _q = shlex.quote
@@ -33,6 +34,41 @@ def container_start_cmd(name: str) -> str:
 
 def container_stop_cmd(name: str) -> str:
     return f"docker stop {_q(name)}"
+
+
+def container_update_cmd(container: Container, stack: Stack | None) -> str:
+    """Compose: pull + recreate exactly this service with the files the running
+    stack uses. Template container: Unraid's own update script.
+
+    Why the config files from `compose ls` and not the folder: the running stack
+    must not be reconfigured (spec, section 6). `pull` / `up -d <service>` with
+    exactly the files it was started from replaces only that one service.
+
+    A compose stack without config files cannot be updated this way at all --
+    `docker compose -p X pull svc` without any `-f` answers "no configuration
+    file provided". `model.container_updatable` is what keeps that command from
+    ever being offered; this builder stays a pure string function.
+    """
+    if stack is None or not container.service:
+        return f"{UPDATE_CONTAINER_SH} {_q(container.name)}"
+    # Built from parts and joined once, like _plain_compose_cmd below: a global
+    # space collapse would also eat a double space inside a quoted path.
+    parts = ["docker", "compose", "$E", "-p", _q(stack.name)]
+    for path in stack.config_files:
+        parts += ["-f", _q(path)]
+    compose = " ".join(parts)
+    if stack.folder:
+        folder = stack.folder.rstrip("/")
+        env = f"{folder}/.env"
+        prefix = (
+            f"cd {_q(folder)} && "
+            f"if [ -f {_q(env)} ]; then E='--env-file {env}'; else E=''; fi && "
+        )
+    else:
+        # No compose.manager folder: no .env to look for, but $E must still expand.
+        prefix = "E='' && "
+    service = _q(container.service)
+    return f"{prefix}{compose} pull {service} && {compose} up -d {service}"
 
 
 # --- compose stacks -----------------------------------------------------------------

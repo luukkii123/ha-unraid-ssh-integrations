@@ -177,3 +177,32 @@ def test_refs_to_check_and_update_state():
     assert state["d"].update_available is True and state["d"].remote_digest == "sha256:new"
     unknown = model.build_update_state(inv, digests, {})
     assert unknown["a"].remote_digest is None and unknown["a"].update_available is None
+
+
+def test_container_updatable_only_where_the_update_command_can_work():
+    """Install is offered exactly where one of the two update paths exists.
+
+    A template container (no compose project) goes through Unraid's own
+    `update_container` script -- that script knows only template containers.
+    A compose container needs the files its stack was started with:
+    `docker compose -p X pull svc` without any `-f` answers "no configuration
+    file provided" (measured on the server), so a stack without config files
+    cannot be updated that way. Offering install there would produce a button
+    that always fails.
+    """
+    template = parse.Container("buschfunk-vorschau", "running", "nginx:alpine", "", "")
+    assert model.container_updatable(template, None) is True
+
+    web = parse.Container("buschfunk-web-1", "running", "img", "buschfunk", "web")
+    with_files = model.Stack(name="buschfunk", folder="/p/Buschfunk/", autostart=True, present=True,
+                             running=1, config_files=("/p/Buschfunk/docker-compose.yml",), containers=())
+    assert model.container_updatable(web, with_files) is True
+
+    # A downed compose.manager stack has a folder but no config files: compose
+    # would have nothing to read.
+    no_files = model.Stack(name="buschfunk", folder="/p/Buschfunk/", autostart=True, present=False,
+                           running=0, config_files=(), containers=())
+    assert model.container_updatable(web, no_files) is False
+
+    # Orphan: the project label points at no stack we resolved.
+    assert model.container_updatable(web, None) is False

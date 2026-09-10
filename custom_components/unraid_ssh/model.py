@@ -228,6 +228,26 @@ def stack_switchable(stack: Stack) -> bool:
     return bool(stack.folder or stack.config_files)
 
 
+def container_updatable(container: Container, stack: Stack | None) -> bool:
+    """True only where `actions.container_update_cmd` can actually work.
+
+    Two update paths exist, and each has a precondition. A template container
+    (no compose project, hence no service label) is updated by Unraid's own
+    `update_container` script -- which knows template containers and nothing
+    else. A compose container is updated with `docker compose ... pull <svc>`
+    and `up -d <svc>`, using exactly the files its stack was started from;
+    without a single `-f`, compose answers "no configuration file provided"
+    (measured on this server). So a compose container whose stack has no config
+    files -- a downed compose.manager folder, or an orphan whose project label
+    matches no stack at all -- has no working path. Its update entity still
+    shows the version comparison; only INSTALL is withheld, because a button
+    that can only fail is worse than no button.
+    """
+    if not container.service:
+        return True
+    return stack is not None and bool(stack.config_files)
+
+
 def find_stack(snapshot: Snapshot, name: str) -> Stack | None:
     return next((s for s in snapshot.stacks if s.name == name), None)
 
