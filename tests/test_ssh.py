@@ -152,3 +152,32 @@ async def test_slow_command_raises_timeout(keypair):
     finally:
         server.close()
         await server.wait_closed()
+
+
+@pytest.mark.asyncio
+async def test_unparsable_stored_host_key_raises_host_key_error(keypair):
+    """A corrupted stored host key must never turn into a trusting connection."""
+    private, public = keypair
+
+    async def handler(proc):
+        return 0
+
+    server, port, _ = await _start(public, handler)
+    try:
+        client = transport.UnraidSSH("127.0.0.1", port, private, "ssh-ed25519 AAAA")
+        with pytest.raises(transport.SSHHostKeyError):
+            await client.run("true", timeout=5)
+    finally:
+        server.close()
+        await server.wait_closed()
+
+
+def test_garbage_private_key_raises_key_error():
+    host_key = asyncssh.generate_private_key("ssh-ed25519").export_public_key("openssh").decode().strip()
+    with pytest.raises(transport.SSHKeyError):
+        transport.UnraidSSH("127.0.0.1", 1, "garbage", host_key)
+
+
+def test_fingerprint_of_nonsense_raises_key_error():
+    with pytest.raises(transport.SSHKeyError):
+        transport.fingerprint("nonsense")
