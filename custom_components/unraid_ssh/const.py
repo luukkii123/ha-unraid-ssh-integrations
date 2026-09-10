@@ -74,7 +74,6 @@ ENTITY_ICONS: Final = {
     "parity_errors": "mdi:alert-circle-outline",
     "parity_running": "mdi:sync",
     "mover_active": "mdi:truck-fast",
-    "updates_available": "mdi:package-up",
     "check_updates": "mdi:package-down",
     "gpu_util": "mdi:expansion-card",
     "gpu_vram": "mdi:memory",
