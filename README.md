@@ -10,11 +10,14 @@ Compose-Stacks und verliert nach Updates die VMs. SSH ist immer da.
 
 ## Was sie liefert
 
-| Stufe | Inhalt |
+| Bereich | Inhalt |
 | --- | --- |
-| 1 (`v0.1.0`) | CPU, RAM, Load, Uptime, Array, Parity, Mover, je GPU, je Platte, je Share |
-| 2 (`v0.2.0`) | Schalter für Docker-Container, Compose-Stacks (Compose-Manager-Plugin) und VMs |
-| 3 (`v0.3.0`) | `update`-Entität je Container — auch für Compose-Container, die Unraids eigene Prüfung nicht sieht |
+| Server | CPU, RAM, Load, Uptime, Array-Status, Parity, Mover, je GPU, je Platte, je Share |
+| Schalter | Docker-Container, Compose-Stacks (über das Compose-Manager-Plugin) und VMs — je Gerät ein/aus |
+| Updates | `update`-Entität je Container mit Registry-Digest, mit „Installieren" — auch für Compose-Container, die Unraids eigene Prüfung nicht sieht; dazu ein Zähler und ein Knopf „Jetzt prüfen" |
+
+Kein Eintrag hier behauptet einen veröffentlichten Stand — nichts ist
+getaggt. Die Tabelle beschreibt, was der Code im Repo tut.
 
 ## Installation
 
@@ -50,3 +53,25 @@ Je Abfrage eine SSH-Verbindung mit **einem** Befehlsstrang: `var.ini`,
 `docker ps`, `docker compose ls`, die Projektordner des Compose-Managers,
 `virsh list`. Die Auswertung passiert in Home Assistant. Auf Unraid liegt
 nichts; ein Neustart löscht nichts.
+
+## Was sie bewusst nicht kann
+
+- Ein Image, das auf einen Digest gepinnt ist (`repo@sha256:…`), meldet nie
+  ein Update — ein Pin hat definitionsgemäß keines. Auf diesem Server betrifft
+  das sechs Container.
+- Lokal gebaute Images (ohne Registry-Digest) bekommen gar keine
+  Update-Entität.
+- „Installieren" führt bei einem Compose-Container `pull` und `up -d` für
+  genau diesen Dienst aus. Ist der Container gestoppt, startet er dabei mit.
+- Ein Compose-Stack, zu dem `docker compose ls` keine Compose-Datei meldet und
+  für den es keinen Ordner im Compose-Manager gibt, bekommt keinen Einschalter
+  und kein Installieren — beides bräuchte eine Datei, die es nicht gibt.
+  Ausschalten und Anzeigen funktionieren.
+
+## Getestet
+
+Parser, Befehlsbauer, das Snapshot-Modell und der SSH-Transport sind mit
+**75 automatisierten Tests** gegen Ausgaben abgedeckt, die von einem echten
+Unraid-Server aufgezeichnet wurden (Unraid 7.3.2). Die Home-Assistant-Seite —
+Config Flow, Koordinatoren, Entitäten — hat noch nie in einem echten Home
+Assistant gelaufen; die Schnittstelle zu Home Assistant ist unbewiesen.
