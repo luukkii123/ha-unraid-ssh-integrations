@@ -213,6 +213,21 @@ def find_gpu(snapshot: Snapshot, index: int) -> Gpu | None:
     return next((g for g in snapshot.gpus if g.index == index), None)
 
 
+def stack_switchable(stack: Stack) -> bool:
+    """False for a stack that has neither a folder nor a compose file.
+
+    Such a stack exists only because its containers still carry the project
+    label. `docker compose -p <name> down` works there (it goes by label and
+    would remove them), but `up -d` cannot -- there is no configuration file to
+    read. A switch would therefore be a trapdoor: switching off empties the
+    project, `merge_stacks` finds no members left, the stack disappears from the
+    snapshot, and neither the switch nor its containers can ever come back from
+    Home Assistant. The stack device and the switches of its containers stay --
+    they are the only handle left on those containers.
+    """
+    return bool(stack.folder or stack.config_files)
+
+
 def find_stack(snapshot: Snapshot, name: str) -> Stack | None:
     return next((s for s in snapshot.stacks if s.name == name), None)
 
