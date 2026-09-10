@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import Entity, EntityDescription
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -87,7 +88,8 @@ class UnraidEntity(CoordinatorEntity[UnraidCoordinator]):
         self._attr_translation_key = description.translation_key or description.key
         if placeholders:
             self._attr_translation_placeholders = placeholders
-        if getattr(description, "device_class", None) is None:
+        # HA supplies a default icon per device class, but not for ENUM.
+        if getattr(description, "device_class", None) in (None, SensorDeviceClass.ENUM):
             self._attr_icon = ENTITY_ICONS.get(description.key)
         self._item_key = item_key
         self._finder = finder

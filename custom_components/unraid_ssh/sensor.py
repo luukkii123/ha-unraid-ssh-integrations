@@ -49,6 +49,7 @@ SERVER: tuple[UnraidSensorDescription, ...] = (
     UnraidSensorDescription(key="array_state", device_class=SensorDeviceClass.ENUM, options=list(ARRAY_STATES),
                             value_fn=lambda s: (s.array.md_state if s.array and s.array.md_state in ARRAY_STATES else "unknown") if s.array else None),
     UnraidSensorDescription(key="parity_progress", native_unit_of_measurement=PERCENTAGE,
+                            state_class=SensorStateClass.MEASUREMENT,
                             value_fn=lambda s: s.array.parity_progress if s.array else None),
     UnraidSensorDescription(key="parity_errors", state_class=SensorStateClass.MEASUREMENT,
                             value_fn=lambda s: s.array.parity_errors if s.array else None),
