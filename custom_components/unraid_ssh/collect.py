@@ -7,6 +7,7 @@ breaking the poll. The final `@@@ end` marker proves the output is complete.
 
 from __future__ import annotations
 
+import re
 import shlex
 
 from .const import (
@@ -53,18 +54,26 @@ def build_state_command() -> str:
     return "; ".join(parts)
 
 
+#: A marker is `@@@ <name>` running to the end of its line. It is deliberately
+#: NOT required to start one: `echo '@@@ next'` writes straight after whatever
+#: the previous command left behind, so a section whose output has no final
+#: newline (a file without one, a `head -1` of it) glues the next marker onto
+#: its own last line. Matching only at line starts made that one missing byte
+#: swallow every following section and fail the whole poll as truncated. The
+#: name is restricted to lowercase words -- every section is one -- so no line
+#: of real output can be mistaken for a marker.
+_MARKER_RE = re.compile(re.escape(SECTION_MARKER) + r"([a-z_]+)[ \t]*(?:\n|\Z)")
+
+
 def split_output(text: str) -> dict[str, str]:
     sections: dict[str, str] = {}
     current: str | None = None
-    buffer: list[str] = []
-    for line in text.splitlines(keepends=True):
-        if line.startswith(SECTION_MARKER):
-            if current is not None:
-                sections[current] = "".join(buffer)
-            current = line[len(SECTION_MARKER):].strip()
-            buffer = []
-            continue
-        buffer.append(line)
+    content_start = 0
+    for match in _MARKER_RE.finditer(text):
+        if current is not None:
+            sections[current] = text[content_start:match.start()]
+        current = match.group(1)
+        content_start = match.end()
     if current != END_SECTION:
         raise TruncatedOutput("output ended without the end marker")
     return sections

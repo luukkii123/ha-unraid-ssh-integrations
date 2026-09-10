@@ -1,7 +1,6 @@
-# Integration Quality Scale — Stand 10.09.2026.
-# Bronze ist das Mindestmaß (docs/ui-regeln.md, Regel 3). manifest.json trägt
-# bewusst keinen quality_scale-Schlüssel, solange config-flow-test-coverage
-# offen ist.
+# Integration Quality Scale — as of 10.09.2026.
+# Bronze is the minimum (docs/ui-regeln.md, rule 3). manifest.json deliberately
+# carries no quality_scale key while config-flow-test-coverage is still open.
 rules:
   action-setup:
     status: exempt
@@ -17,7 +16,7 @@ rules:
     status: todo
     comment: >-
       tests/ covers parse.py, collect.py, model.py, the SSH transport (against an
-      in-process asyncssh server) and the translation files — 52 tests. The config
+      in-process asyncssh server) and the translation files — 82 tests. The config
       flow itself is never executed: that needs pytest-homeassistant-custom-component.
   config-flow: done
   dependency-transparency:

@@ -64,14 +64,18 @@ nichts; ein Neustart löscht nichts.
 - „Installieren" führt bei einem Compose-Container `pull` und `up -d` für
   genau diesen Dienst aus. Ist der Container gestoppt, startet er dabei mit.
 - Ein Compose-Stack, zu dem `docker compose ls` keine Compose-Datei meldet und
-  für den es keinen Ordner im Compose-Manager gibt, bekommt keinen Einschalter
-  und kein Installieren — beides bräuchte eine Datei, die es nicht gibt.
-  Ausschalten und Anzeigen funktionieren.
+  für den es keinen Ordner im Compose-Manager gibt, bekommt **gar keinen
+  Stack-Schalter** — weder ein noch aus —, und „Installieren" gibt es für
+  seine Container ebenfalls nicht: beides bräuchte eine Compose-Datei, die es
+  nicht gibt. Ein reiner Ausschalter wäre außerdem eine Falltür: danach hätte
+  der Stack keine Container mehr, verschwände aus der Abfrage und käme nie
+  zurück. Was bleibt, ist das Gerät des Stacks samt seinen Anzeigen — und der
+  eigene Schalter jedes einzelnen Containers.
 
 ## Getestet
 
 Parser, Befehlsbauer, das Snapshot-Modell und der SSH-Transport sind mit
-**75 automatisierten Tests** gegen Ausgaben abgedeckt, die von einem echten
+**82 automatisierten Tests** gegen Ausgaben abgedeckt, die von einem echten
 Unraid-Server aufgezeichnet wurden (Unraid 7.3.2). Die Home-Assistant-Seite —
 Config Flow, Koordinatoren, Entitäten — hat noch nie in einem echten Home
 Assistant gelaufen; die Schnittstelle zu Home Assistant ist unbewiesen.

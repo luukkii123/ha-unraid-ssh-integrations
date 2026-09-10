@@ -13,7 +13,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN, ENTITY_ICONS
 from .coordinator import UnraidCoordinator
-from .model import Snapshot
+from .model import Snapshot, Stack, stack_key
 from .parse import Container, Disk, Gpu, Vm
 
 MANUFACTURER = "Lime Technology"
@@ -35,10 +35,19 @@ def server_device(coordinator: UnraidCoordinator) -> DeviceInfo:
     )
 
 
-def _child(coordinator: UnraidCoordinator, suffix: str, name: str, model: str, **extra: Any) -> DeviceInfo:
+def _child(coordinator: UnraidCoordinator, suffix: str, label: str, model: str, **extra: Any) -> DeviceInfo:
+    """A device below the server one, named `<entry title> <label>`.
+
+    Every child carries the entry title, without exception. With
+    `has_entity_name` the device name becomes the stem of every entity id
+    created on it, so this is what makes the README's promise true -- the entry
+    title is the prefix of all of them -- and what keeps `Windows 11` or
+    `nginx` from colliding with the entity ids of the other Unraid integration,
+    where Home Assistant would silently append `_2`.
+    """
     return DeviceInfo(
         identifiers={(DOMAIN, f"{coordinator.entry.entry_id}_{suffix}")},
-        name=name,
+        name=f"{coordinator.entry.title} {label}",
         manufacturer=MANUFACTURER,
         model=model,
         via_device=_server_id(coordinator),
@@ -51,11 +60,20 @@ def gpu_device(coordinator: UnraidCoordinator, gpu: Gpu) -> DeviceInfo:
 
 
 def disk_device(coordinator: UnraidCoordinator, disk: Disk) -> DeviceInfo:
-    return _child(coordinator, f"disk_{disk.name}", f"{coordinator.entry.title} {disk.name}", f"{disk.kind} disk")
+    return _child(coordinator, f"disk_{disk.name}", disk.name, f"{disk.kind} disk")
 
 
-def stack_device(coordinator: UnraidCoordinator, name: str) -> DeviceInfo:
-    return _child(coordinator, f"stack_{name}", f"Stack {name}", "Compose stack")
+def stack_device(coordinator: UnraidCoordinator, stack: Stack) -> DeviceInfo:
+    """Identified by the folder basename, not by the live project name.
+
+    `Stack.name` is the running project's name while the stack is up and a
+    derived one while it is down, so keying the device on it would hand the
+    same stack two devices over its lifetime -- and the older one would stay
+    behind, forever unavailable. `model.stack_key` is the part that does not
+    move.
+    """
+    key = stack_key(stack)
+    return _child(coordinator, f"stack_{key}", f"Stack {key}", "Compose stack")
 
 
 def container_device(coordinator: UnraidCoordinator, container: Container) -> DeviceInfo:

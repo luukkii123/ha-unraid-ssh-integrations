@@ -23,7 +23,7 @@
       },
       "reauth_confirm": {
         "title": "Unraid rejected the connection",
-        "description": "Either the key is no longer authorized on {host}, or the server's host key changed (new fingerprint: {new_fingerprint}). Re-authorize the key with the lines below, and tick the box only if you know why the host key changed.\n\n```\n{pubkeys_line}\n{authorized_line}\n```",
+        "description": "Either the key is no longer authorized on {host}, or the server's host key changed. Host key fingerprint: {host_key_fingerprint}. Re-authorize the key with the lines below, and tick the box only if you know why the host key changed.\n\n```\n{pubkeys_line}\n{authorized_line}\n```",
         "data": {
           "accept_host_key": "Accept the new host key"
         },

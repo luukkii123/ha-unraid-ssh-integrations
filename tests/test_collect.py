@@ -44,6 +44,19 @@ def test_split_output_keeps_empty_sections():
     assert out["var"] == 'NAME="x"\n'
 
 
+def test_split_output_survives_a_section_without_a_trailing_newline():
+    """`echo '@@@ end'` writes straight after whatever the last command left.
+
+    A section whose output has no final newline used to glue the next marker
+    onto its last line -- the marker then started no new section, `@@@ end` was
+    never seen, and the whole poll failed as truncated. One section without a
+    trailing newline must not cost more than that section's last line ending.
+    """
+    out = collect.split_output('@@@ var\nNAME="x"\n@@@ stat\ncpu 1 2 3@@@ end\n')
+    assert out["var"] == 'NAME="x"\n'
+    assert out["stat"] == "cpu 1 2 3"
+
+
 def test_inventory_command_shape():
     cmd = collect.build_inventory_command()
     assert "echo '@@@ containers'" in cmd and "echo '@@@ images'" in cmd and cmd.rstrip().endswith("echo '@@@ end'")

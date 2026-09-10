@@ -54,7 +54,7 @@ UnraidConfigEntry = ConfigEntry["UnraidRuntime"]
 class UnraidRuntime:
     client: UnraidSSH
     coordinator: "UnraidCoordinator"
-    updates: "UpdateCoordinator | None" = None   # set in async_setup_entry
+    updates: "UpdateCoordinator"                 # always set in async_setup_entry
 
 
 def setting(entry: ConfigEntry, key: str, default: Any) -> Any:

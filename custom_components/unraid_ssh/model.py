@@ -29,9 +29,33 @@ def normalize_project_name(name: str) -> str:
     return _INVALID_PROJECT_CHARS.sub("-", name.strip().lower()).strip("-_")
 
 
+_UNRAID_PROJECT_CHARS = re.compile(r"[.\s-]")
+
+
+def unraid_project_name(name: str) -> str:
+    """The project name Unraid's own Compose Manager starts a folder under.
+
+    Not compose's rule -- the plugin's. `sanitizeStr()` in
+    `/usr/local/emhttp/plugins/compose.manager/php/util.php` (lines 3-8)
+    replaces `.`, space and `-` with `_` and lowercases the result; the string
+    it is applied to comes from
+    `/usr/local/emhttp/plugins/compose.manager/php/compose_util.php`
+    (lines 47-51): the folder basename, replaced by the content of the folder's
+    `name` file where that file exists -- which is exactly what
+    `parse.StackDir.name` already holds. The result is handed to `compose.sh`
+    as `-p`, so it is the name under which the stack comes up.
+
+    Read off this server: the folder `gps-bridge` has no `name` file and runs
+    as the project `gps_bridge`; `Claude-Station` has a `name` file saying
+    `Claude Station` and would come up as `claude_station`.
+    """
+    return _UNRAID_PROJECT_CHARS.sub("_", name).lower()
+
+
 @dataclass(frozen=True)
 class Stack:
-    name: str
+    name: str                  # the live project name while it runs, the fallback while it is down
+    manager_name: str          # what Unraid would start it as, "" without a folder
     folder: str                # compose.manager project folder, "" when only seen in compose ls
     autostart: bool
     present: bool              # listed by `docker compose ls -a`
@@ -40,28 +64,48 @@ class Stack:
     containers: tuple[Container, ...]
 
 
+def stack_key(stack: Stack) -> str:
+    """The one name of a stack that does not move: its folder basename.
+
+    `Stack.name` changes when the stack goes down (live project name -> derived
+    name), so anything that has to stay put across a restart -- a device
+    identifier, an entity's unique id -- keys on this instead. Only a stack
+    without a folder has nothing but its project name, and that one cannot
+    change: it exists only while compose reports it.
+    """
+    if stack.folder:
+        return stack.folder.rstrip("/").rsplit("/", 1)[-1]
+    return stack.name
+
+
 def _match_projects(
     stack_dirs: list[parse.StackDir],
     projects: list[parse.ComposeProject],
 ) -> dict[int, parse.ComposeProject]:
     """Map folder index -> compose project.
 
-    Two rules. First the names: the folder's `name` file, normalized, usually
-    *is* the project name. Where it is not — `gps-bridge` on disk, `gps_bridge`
-    in compose — the project's config files still lie inside the folder, and
-    that path is what ties the two together. All name matches are resolved
-    before any path match, so the order of the folders cannot let one folder
-    take a project that another folder is actually named after.
+    Three rules, in this order. First the compose-style name: the folder's
+    `name` file, normalized, is often the project name outright. Then Unraid's
+    own name -- `gps-bridge` on disk becomes the project `gps_bridge`, and that
+    is what the Compose Manager itself would start it as. Only then the config
+    files: a project started by hand from inside the folder is tied to it by
+    that path alone. All name matches are resolved before any path match, so
+    the order of the folders cannot let one folder take a project that another
+    folder is actually named after; and a project claimed once is never
+    claimed again.
     """
     matched: dict[int, parse.ComposeProject] = {}
     claimed: set[str] = set()
-    for index, folder in enumerate(stack_dirs):
-        normalized = normalize_project_name(folder.name)
-        for project in projects:
-            if project.name not in claimed and project.name == normalized:
-                matched[index] = project
-                claimed.add(project.name)
-                break
+    for derive in (normalize_project_name, unraid_project_name):
+        for index, folder in enumerate(stack_dirs):
+            if index in matched:
+                continue
+            derived = derive(folder.name)
+            for project in projects:
+                if project.name not in claimed and project.name == derived:
+                    matched[index] = project
+                    claimed.add(project.name)
+                    break
     for index, folder in enumerate(stack_dirs):
         if index in matched:
             continue
@@ -102,6 +146,7 @@ def merge_stacks(
         stacks.append(
             Stack(
                 name=name,
+                manager_name=unraid_project_name(folder.name),
                 folder=folder.path,
                 autostart=folder.autostart,
                 present=info is not None,
@@ -116,7 +161,7 @@ def merge_stacks(
         taken.add(info.name)
         stacks.append(
             Stack(
-                name=info.name, folder="", autostart=False, present=True,
+                name=info.name, manager_name="", folder="", autostart=False, present=True,
                 running=info.running, config_files=info.config_files,
                 containers=tuple(by_project.get(info.name, ())),
             )
@@ -131,7 +176,7 @@ def merge_stacks(
         taken.add(project_name)
         stacks.append(
             Stack(
-                name=project_name, folder="", autostart=False, present=False,
+                name=project_name, manager_name="", folder="", autostart=False, present=False,
                 running=sum(1 for c in members if c.state == "running"),
                 config_files=(),
                 containers=tuple(members),
@@ -249,7 +294,19 @@ def container_updatable(container: Container, stack: Stack | None) -> bool:
 
 
 def find_stack(snapshot: Snapshot, name: str) -> Stack | None:
+    """By project name -- what a container's `project` label gives you."""
     return next((s for s in snapshot.stacks if s.name == name), None)
+
+
+def find_stack_by_key(snapshot: Snapshot, key: str) -> Stack | None:
+    """By stable key -- what an entity created once has to keep looking up.
+
+    An entity's item key is frozen when it is created, and `Stack.name` is not:
+    a stack that was running as `gps_bridge` is called `gps-bridge` once it is
+    down. Looking up by name would make the stack switch unavailable exactly
+    when someone wants to switch it back on.
+    """
+    return next((s for s in snapshot.stacks if stack_key(s) == key), None)
 
 
 def find_container(snapshot: Snapshot, name: str) -> Container | None:

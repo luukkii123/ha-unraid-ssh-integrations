@@ -12,6 +12,101 @@ def test_normalize_project_name():
     assert model.normalize_project_name("-lead") == "lead"
 
 
+def _snap(stacks):
+    """A snapshot carrying nothing but these stacks -- enough for the finders."""
+    return model.Snapshot(
+        array=None, disks=(), shares=(), cpu_times=None, cpu_percent=None, memory=None,
+        load=None, gpus=(), stacks=tuple(stacks), template_containers=(), containers=(),
+        vms=(), failed=frozenset(),
+    )
+
+
+def test_unraid_project_name_is_the_compose_manager_rule():
+    """Unraid's own rule, not compose's: `.`, whitespace and `-` become `_`.
+
+    Read off the plugin on the server: `sanitizeStr()` in
+    /usr/local/emhttp/plugins/compose.manager/php/util.php and the project name
+    in /usr/local/emhttp/plugins/compose.manager/php/compose_util.php. Confirmed
+    against `docker compose ls`: the folder `gps-bridge` (no `name` file) runs as
+    the project `gps_bridge`.
+    """
+    assert model.unraid_project_name("gps-bridge") == "gps_bridge"
+    assert model.unraid_project_name("Claude Station") == "claude_station"
+    assert model.unraid_project_name("Busch-Print") == "busch_print"
+    assert model.unraid_project_name("Buschfunk") == "buschfunk"
+    assert model.unraid_project_name("a.b c") == "a_b_c"
+
+
+def test_merge_stacks_carries_the_compose_manager_project_name():
+    """`manager_name` is what Unraid's own button would start the stack under.
+
+    A folder-backed stack always has one -- computed from the same string
+    Unraid uses, the `name` file if there is one and the folder basename
+    otherwise. A stack that exists only in `docker compose ls` has none.
+    """
+    dirs = [
+        parse.StackDir(path="/p/gps-bridge/", name="gps-bridge", autostart=True),
+        parse.StackDir(path="/p/Claude-Station/", name="Claude Station", autostart=True),
+    ]
+    stacks, _ = model.merge_stacks(dirs, [], [])
+    assert [s.manager_name for s in stacks] == ["gps_bridge", "claude_station"]
+
+    projects = [parse.ComposeProject(name="adhoc", status="running(1)", running=1, config_files=("/tmp/a.yml",))]
+    adhoc = model.merge_stacks([], projects, [])[0][0]
+    assert adhoc.folder == "" and adhoc.manager_name == ""
+
+
+def test_merge_stacks_matches_a_project_by_the_unraid_name():
+    """`gps-bridge` on disk, `gps_bridge` in compose -- and the config file
+    somewhere else entirely (a stack started by hand from another path). The
+    Unraid name is what ties the two together; without it the stack would
+    appear twice."""
+    dirs = [parse.StackDir(path="/p/gps-bridge/", name="gps-bridge", autostart=True)]
+    projects = [
+        parse.ComposeProject(
+            name="gps_bridge", status="running(1)", running=1,
+            config_files=("/elsewhere/docker-compose.yml",),
+        )
+    ]
+    stacks, _ = model.merge_stacks(dirs, projects, [])
+    assert len(stacks) == 1
+    assert stacks[0].name == "gps_bridge" and stacks[0].folder == "/p/gps-bridge/"
+    assert stacks[0].present is True
+
+
+def test_stack_key_is_the_same_whether_or_not_the_stack_runs():
+    """The device identity of a stack must not depend on it running.
+
+    `Stack.name` is the live project name while the stack is up and a derived
+    name while it is down. Keying a device on that would give one stack two
+    devices over its lifetime, the older one permanently unavailable. The
+    folder basename does not move.
+    """
+    dirs = [parse.StackDir(path="/p/gps-bridge/", name="gps-bridge", autostart=True)]
+    projects = [
+        parse.ComposeProject(
+            name="gps_bridge", status="running(1)", running=1,
+            config_files=("/p/gps-bridge/docker-compose.yml",),
+        )
+    ]
+    containers = [parse.Container("gps-bridge", "running", "img", "gps_bridge", "gps-bridge")]
+    up = model.merge_stacks(dirs, projects, containers)[0][0]
+    down = model.merge_stacks(dirs, [], [])[0][0]
+    assert up.name != down.name                      # exactly the case that used to split the device
+    assert model.stack_key(up) == model.stack_key(down) == "gps-bridge"
+
+    # And the lookup an entity keeps doing has to use that key, not the name:
+    # the switch of a downed stack must still find its stack.
+    assert model.find_stack_by_key(_snap([down]), "gps-bridge") is down
+    assert model.find_stack_by_key(_snap([up]), "gps-bridge") is up
+    assert model.find_stack(_snap([down]), "gps_bridge") is None      # why the key exists
+
+    # Only a stack without a folder has nothing but its project name.
+    adhoc_projects = [parse.ComposeProject(name="adhoc", status="running(1)", running=1, config_files=("/tmp/a.yml",))]
+    adhoc = model.merge_stacks([], adhoc_projects, [])[0][0]
+    assert model.stack_key(adhoc) == "adhoc"
+
+
 def test_merge_stacks_attaches_containers_and_keeps_downed_stacks():
     dirs = [
         parse.StackDir(path="/p/Buschfunk/", name="buschfunk", autostart=True),
@@ -96,6 +191,8 @@ def test_build_snapshot_from_recorded_output(fixture):
     assert len(snap.stacks) == 14                        # 13 folders + folderless busch-finanz
     gps = next(s for s in snap.stacks if s.folder.rstrip("/").endswith("/gps-bridge"))
     assert any(c.name == "gps-bridge" for c in gps.containers)
+    assert gps.manager_name == "gps_bridge"          # what Unraid would start it as
+    assert model.stack_key(gps) == "gps-bridge"
     finanz = model.find_stack(snap, "busch-finanz")
     assert finanz is not None and finanz.folder == "" and finanz.present is True
     assert any(c.name == "buschfunk-vorschau" for c in snap.template_containers)
@@ -194,13 +291,15 @@ def test_container_updatable_only_where_the_update_command_can_work():
     assert model.container_updatable(template, None) is True
 
     web = parse.Container("buschfunk-web-1", "running", "img", "buschfunk", "web")
-    with_files = model.Stack(name="buschfunk", folder="/p/Buschfunk/", autostart=True, present=True,
+    with_files = model.Stack(name="buschfunk", manager_name="buschfunk", folder="/p/Buschfunk/",
+                             autostart=True, present=True,
                              running=1, config_files=("/p/Buschfunk/docker-compose.yml",), containers=())
     assert model.container_updatable(web, with_files) is True
 
     # A downed compose.manager stack has a folder but no config files: compose
     # would have nothing to read.
-    no_files = model.Stack(name="buschfunk", folder="/p/Buschfunk/", autostart=True, present=False,
+    no_files = model.Stack(name="buschfunk", manager_name="buschfunk", folder="/p/Buschfunk/",
+                           autostart=True, present=False,
                            running=0, config_files=(), containers=())
     assert model.container_updatable(web, no_files) is False
 
