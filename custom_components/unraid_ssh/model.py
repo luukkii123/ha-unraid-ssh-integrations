@@ -3,7 +3,9 @@
 Each section is parsed on its own: a parser that raises marks its section in
 `Snapshot.failed` and leaves the others intact. Stacks come from the
 compose.manager project folders (so a downed stack keeps existing) and are
-enriched with `docker compose ls` and the container labels.
+enriched with `docker compose ls` and the container labels. A container whose
+project label belongs to none of those still gets a stack of its own, so no
+container is ever dropped on the floor.
 """
 
 from __future__ import annotations
@@ -89,12 +91,14 @@ def merge_stacks(
 
     matched = _match_projects(stack_dirs, projects)
     stacks: list[Stack] = []
+    taken: set[str] = set()
     for index, folder in enumerate(stack_dirs):
         info = matched.get(index)
         # The compose project name is what `docker ps` labels and what every
         # compose command takes, so a matched stack carries it; an unmatched
         # folder falls back to its own normalized name.
         name = info.name if info else normalize_project_name(folder.name)
+        taken.add(name)
         stacks.append(
             Stack(
                 name=name,
@@ -106,7 +110,6 @@ def merge_stacks(
                 containers=tuple(by_project.get(name, ())),
             )
         )
-    taken = {info.name for info in matched.values()}
     for info in projects:
         if info.name in taken:
             continue
@@ -116,6 +119,22 @@ def merge_stacks(
                 name=info.name, folder="", autostart=False, present=True,
                 running=info.running, config_files=info.config_files,
                 containers=tuple(by_project.get(info.name, ())),
+            )
+        )
+    # Containers whose project label matches no stack we resolved: an orphan of a
+    # removed or renamed project, or — the case that matters — every stack at once
+    # when the `compose` section fails to parse while `docker` succeeds. They get a
+    # synthetic stack instead of disappearing, so the device stays in place.
+    for project_name, members in by_project.items():
+        if project_name in taken:
+            continue
+        taken.add(project_name)
+        stacks.append(
+            Stack(
+                name=project_name, folder="", autostart=False, present=False,
+                running=sum(1 for c in members if c.state == "running"),
+                config_files=(),
+                containers=tuple(members),
             )
         )
     return tuple(stacks), tuple(loose)
