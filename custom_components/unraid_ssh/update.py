@@ -23,7 +23,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from . import actions
 from .const import UPDATE_TIMEOUT
 from .coordinator import UnraidConfigEntry, UnraidCoordinator, UpdateCoordinator, UpdateState
-from .entity import device_for_container, track_new
+from .entity import ContainerPictureMixin, device_for_container, track_new
 from .model import ImageStatus, container_updatable, find_container, find_stack
 from .parse import Container
 
@@ -34,7 +34,7 @@ def _short(digest: str | None) -> str | None:
     return None if digest is None else digest.removeprefix("sha256:")[:12]
 
 
-class ContainerUpdate(CoordinatorEntity[UpdateCoordinator], UpdateEntity):
+class ContainerUpdate(ContainerPictureMixin, CoordinatorEntity[UpdateCoordinator], UpdateEntity):
     _attr_has_entity_name = True
 
     def __init__(self, updates: UpdateCoordinator, fast: UnraidCoordinator, container: Container) -> None:
@@ -42,10 +42,16 @@ class ContainerUpdate(CoordinatorEntity[UpdateCoordinator], UpdateEntity):
         self.entity_description = DESCRIPTION
         self._fast = fast
         self._name = container.name
+        self._container_name = container.name
+        self._icons = fast.entry.runtime_data.icons
         self._attr_unique_id = f"{updates.entry.entry_id}_update_{container.name}"
         self._attr_device_info = device_for_container(fast, container)
         self._attr_translation_key = "container_update"
         self._attr_translation_placeholders = {"container": container.name}
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self.async_on_remove(self._fast.async_add_listener(self.async_write_ha_state))
 
     @property
     def _status(self) -> ImageStatus | None:

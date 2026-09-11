@@ -11,7 +11,7 @@ import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -44,6 +44,9 @@ from .model import ImageStatus, Snapshot, build_snapshot, build_update_state, re
 from .parse import parse_image_digests, parse_inventory, parse_remote_digests
 from .ssh import SSHAuthError, SSHError, SSHHostKeyError, UnraidSSH
 
+if TYPE_CHECKING:
+    from .icon_cache import ContainerIconCache
+
 _LOGGER = logging.getLogger(__name__)
 
 # Assignment instead of PEP 695 so the file still parses under Python 3.11.
@@ -55,6 +58,7 @@ class UnraidRuntime:
     client: UnraidSSH
     coordinator: "UnraidCoordinator"
     updates: "UpdateCoordinator"                 # always set in async_setup_entry
+    icons: "ContainerIconCache"
 
 
 def setting(entry: ConfigEntry, key: str, default: Any) -> Any:

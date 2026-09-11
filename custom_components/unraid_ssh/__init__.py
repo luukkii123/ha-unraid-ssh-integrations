@@ -19,6 +19,7 @@ from .coordinator import (
     UpdateCoordinator,
     build_client,
 )
+from .icon_cache import ContainerIconCache, async_remove_icon_files, async_setup_icon_http
 from .ssh import SSHKeyError
 
 # Every entry here needs its module: forwarding a platform whose module does
@@ -42,8 +43,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: UnraidConfigEntry) -> bo
     coordinator = UnraidCoordinator(hass, entry, client)
     await coordinator.async_config_entry_first_refresh()
     updates = UpdateCoordinator(hass, entry, client)
-    entry.runtime_data = UnraidRuntime(client=client, coordinator=coordinator, updates=updates)
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    await async_setup_icon_http(hass)
+    icons = ContainerIconCache(hass, entry.entry_id, client)
+    entry.runtime_data = UnraidRuntime(client=client, coordinator=coordinator, updates=updates, icons=icons)
+
+    def schedule_icons() -> None:
+        if coordinator.last_update_success and coordinator.data is not None:
+            icons.schedule(coordinator.data)
+
+    entry.async_on_unload(coordinator.async_add_listener(schedule_icons))
+    schedule_icons()
+    try:
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    except BaseException:
+        await icons.async_shutdown()
+        raise
     # The first digest check takes minutes; it must not delay setup or fail it.
     entry.async_create_background_task(hass, updates.async_refresh(), "unraid_ssh first update check")
     entry.async_on_unload(entry.add_update_listener(_async_reload))
@@ -51,7 +65,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: UnraidConfigEntry) -> bo
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: UnraidConfigEntry) -> bool:
-    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if unloaded := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
+        await entry.runtime_data.icons.async_shutdown()
+    return unloaded
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: UnraidConfigEntry) -> None:
+    await async_remove_icon_files(hass, entry.entry_id)
 
 
 async def _async_reload(hass: HomeAssistant, entry: UnraidConfigEntry) -> None:

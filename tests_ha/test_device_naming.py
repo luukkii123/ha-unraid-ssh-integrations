@@ -53,7 +53,7 @@ def _snapshot(
 class _Entry:
     entry_id: str = "entry-1"
     title: str = "My Unraid"
-    runtime_data: Any = None
+    runtime_data: Any = field(default_factory=lambda: SimpleNamespace(icons=None))
     unload_callbacks: list[Any] = field(default_factory=list)
 
     def async_on_unload(self, callback):
@@ -160,7 +160,7 @@ async def test_update_waits_for_fast_snapshot_then_registers_from_fast_listener(
             checked_at=None,
         ),
     )
-    entry.runtime_data = SimpleNamespace(coordinator=fast, updates=updates)
+    entry.runtime_data = SimpleNamespace(coordinator=fast, updates=updates, icons=None)
     added = []
 
     await setup_updates(None, entry, added.extend)
