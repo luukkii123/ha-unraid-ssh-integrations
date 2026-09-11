@@ -59,6 +59,13 @@
       }
     }
   },
+  "device": {
+    "disk": {"name": "{prefix} Festplatte {component}"},
+    "stack": {"name": "{prefix} Stack {component}"},
+    "vm": {"name": "{prefix} VM {component}"},
+    "standalone_containers": {"name": "{prefix} Freie Container"},
+    "share": {"name": "{prefix} Share {component}"}
+  },
   "entity": {
     "sensor": {
       "cpu_percent": {"name": "CPU-Auslastung"},
@@ -69,12 +76,12 @@
       "parity_progress": {"name": "Parity-Check-Fortschritt"},
       "parity_errors": {"name": "Parity-Fehler"},
       "updates_available": {"name": "Container mit Update"},
-      "share_used": {"name": "{share} belegt"},
-      "share_free": {"name": "{share} frei"},
-      "gpu_util": {"name": "Auslastung"},
-      "gpu_vram": {"name": "VRAM-Belegung"},
-      "gpu_temp": {"name": "Temperatur"},
-      "gpu_power": {"name": "Leistung"},
+      "share_used": {"name": "Belegt"},
+      "share_free": {"name": "Frei"},
+      "gpu_util": {"name": "GPU {index} {gpu} Auslastung"},
+      "gpu_vram": {"name": "GPU {index} {gpu} VRAM-Belegung"},
+      "gpu_temp": {"name": "GPU {index} {gpu} Temperatur"},
+      "gpu_power": {"name": "GPU {index} {gpu} Leistung"},
       "disk_temp": {"name": "Temperatur"},
       "disk_usage": {"name": "Belegung"},
       "disk_status": {"name": "Status", "state": {"ok": "OK", "new": "Neu", "disabled": "Deaktiviert", "invalid": "Ungültig", "missing": "Fehlt", "not_present": "Nicht vorhanden", "unknown": "Unbekannt"}},
@@ -95,8 +102,7 @@
       "vm": {"name": "Strom"}
     },
     "update": {
-      "container_update": {"name": "{container}"},
-      "image_update": {"name": "Image-Update"}
+      "container_update": {"name": "{container} Update"}
     }
   }
 }

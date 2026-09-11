@@ -23,7 +23,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from . import actions
 from .const import UPDATE_TIMEOUT
 from .coordinator import UnraidConfigEntry, UnraidCoordinator, UpdateCoordinator, UpdateState
-from .entity import container_device, stack_device, track_new
+from .entity import device_for_container, track_new
 from .model import ImageStatus, container_updatable, find_container, find_stack
 from .parse import Container
 
@@ -37,28 +37,15 @@ def _short(digest: str | None) -> str | None:
 class ContainerUpdate(CoordinatorEntity[UpdateCoordinator], UpdateEntity):
     _attr_has_entity_name = True
 
-    def __init__(self, updates: UpdateCoordinator, fast: UnraidCoordinator, name: str) -> None:
+    def __init__(self, updates: UpdateCoordinator, fast: UnraidCoordinator, container: Container) -> None:
         super().__init__(updates)
         self.entity_description = DESCRIPTION
         self._fast = fast
-        self._name = name
-        self._attr_unique_id = f"{updates.entry.entry_id}_update_{name}"
-        container = find_container(fast.data, name) if fast.data else None
-        stack = find_stack(fast.data, container.project) if container and container.project and fast.data else None
-        if container is None:
-            container = Container(name, "unknown", "", "", "")   # seen by the slow poll only
-        if stack is not None:
-            # One stack device carries several update entities, so each one has
-            # to name its container to stay distinguishable.
-            self._attr_device_info = stack_device(fast, stack)
-            self._attr_translation_key = "container_update"
-            self._attr_translation_placeholders = {"container": name}
-        else:
-            # A device of its own, already named after the container: repeating
-            # the name here would read "nginx nginx" -- and that repetition is
-            # baked into the entity id at creation time.
-            self._attr_device_info = container_device(fast, container)
-            self._attr_translation_key = "image_update"
+        self._name = container.name
+        self._attr_unique_id = f"{updates.entry.entry_id}_update_{container.name}"
+        self._attr_device_info = device_for_container(fast, container)
+        self._attr_translation_key = "container_update"
+        self._attr_translation_placeholders = {"container": container.name}
 
     @property
     def _status(self) -> ImageStatus | None:
@@ -136,11 +123,23 @@ class ContainerUpdate(CoordinatorEntity[UpdateCoordinator], UpdateEntity):
 
 def _build(updates: UpdateCoordinator, fast: UnraidCoordinator) -> Callable[[UpdateState], dict[str, ContainerUpdate]]:
     def build(state: UpdateState) -> dict[str, ContainerUpdate]:
-        return {name: ContainerUpdate(updates, fast, name) for name in state.images}
+        snapshot = fast.data
+        if snapshot is None:
+            return {}
+        return {
+            name: ContainerUpdate(updates, fast, container)
+            for name in state.images
+            if (container := find_container(snapshot, name)) is not None
+        }
 
     return build
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: UnraidConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     runtime = entry.runtime_data
-    track_new(runtime.updates, async_add_entities, _build(runtime.updates, runtime.coordinator))
+    track_new(
+        runtime.updates,
+        async_add_entities,
+        _build(runtime.updates, runtime.coordinator),
+        listen_to=(runtime.coordinator,),
+    )

@@ -76,6 +76,13 @@
       }
     }
   },
+  "device": {
+    "disk": {"name": "{prefix} Disk {component}"},
+    "stack": {"name": "{prefix} Stack {component}"},
+    "vm": {"name": "{prefix} VM {component}"},
+    "standalone_containers": {"name": "{prefix} Standalone containers"},
+    "share": {"name": "{prefix} Share {component}"}
+  },
   "entity": {
     "sensor": {
       "cpu_percent": {"name": "CPU usage"},
@@ -89,12 +96,12 @@
       "parity_progress": {"name": "Parity check progress"},
       "parity_errors": {"name": "Parity errors"},
       "updates_available": {"name": "Containers with updates"},
-      "share_used": {"name": "{share} used"},
-      "share_free": {"name": "{share} free"},
-      "gpu_util": {"name": "Utilization"},
-      "gpu_vram": {"name": "VRAM usage"},
-      "gpu_temp": {"name": "Temperature"},
-      "gpu_power": {"name": "Power"},
+      "share_used": {"name": "Used"},
+      "share_free": {"name": "Free"},
+      "gpu_util": {"name": "GPU {index} {gpu} utilization"},
+      "gpu_vram": {"name": "GPU {index} {gpu} VRAM usage"},
+      "gpu_temp": {"name": "GPU {index} {gpu} temperature"},
+      "gpu_power": {"name": "GPU {index} {gpu} power"},
       "disk_temp": {"name": "Temperature"},
       "disk_usage": {"name": "Usage"},
       "disk_status": {
@@ -121,8 +128,7 @@
       "vm": {"name": "Power"}
     },
     "update": {
-      "container_update": {"name": "{container}"},
-      "image_update": {"name": "Image update"}
+      "container_update": {"name": "{container} update"}
     }
   }
 }
