@@ -14,6 +14,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpda
 from .const import DOMAIN, ENTITY_ICONS
 from .coordinator import UnraidCoordinator
 from .devices import container_device_suffix, share_device_suffix
+from .icon_cache import ContainerIconCache
 from .model import Snapshot, Stack, stack_key
 from .model import find_stack
 from .parse import Container, Disk, Share, Vm
@@ -191,3 +192,18 @@ def track_new(
     _sync()
     for source in (coordinator, *listen_to):
         coordinator.entry.async_on_unload(source.async_add_listener(_sync))
+
+
+class ContainerPictureMixin:
+    """Same live picture and listener lifecycle for every container entity."""
+
+    _icons: ContainerIconCache
+    _container_name: str
+
+    @property
+    def entity_picture(self) -> str | None:
+        return self._icons.picture(self._container_name)
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self.async_on_remove(self._icons.async_add_listener(self.async_write_ha_state))

@@ -3,6 +3,7 @@
   "name": "Unraid SSH",
   "codeowners": ["@luukkii123"],
   "config_flow": true,
+  "dependencies": ["http"],
   "documentation": "https://github.com/luukkii123/ha-unraid-ssh-integrations",
   "integration_type": "hub",
   "iot_class": "local_polling",

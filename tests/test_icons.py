@@ -118,3 +118,34 @@ def test_select_icon_accepts_http_urls_with_a_host(value):
 def test_unraid_question_mark_is_not_an_icon_source():
     text = '{"web":{"path":"/var/lib/docker/unraid/images/question.png","revision":"1:1"}}'
     assert parse_icon_metadata(text) == {}
+
+
+def test_image_read_command_quotes_filename_and_checks_real_cache_boundary(tmp_path):
+    import base64
+    import shlex
+    import subprocess
+    from unraid_ssh import icons
+
+    assert hasattr(icons, 'build_icon_read_command'), 'bounded image reader missing'
+    root = tmp_path / 'cache'
+    root.mkdir()
+    safe = root / "a'; $(touch escaped).png"
+    safe.write_bytes(b'picture')
+    outside = tmp_path / 'private'
+    outside.write_bytes(b'private')
+    (root / 'escape.png').symlink_to(outside)
+    (root / 'empty.png').touch()
+    (root / 'large.png').write_bytes(b'x' * 1048577)
+    for path, allowed in [(safe, True), (outside, False), (root / 'escape.png', False),
+                          (root / 'empty.png', False), (root / 'large.png', False), (root, False)]:
+        # Replace only fixed production root CLI arguments in this sandbox.
+        argv = shlex.split(icons.build_icon_read_command(str(path)))
+        argv[-2:] = [str(root), str(tmp_path / 'absent')]
+        result = subprocess.run(shlex.join(argv), shell=True, capture_output=True, text=True, cwd=tmp_path)
+        assert result.stderr == ''
+        if allowed:
+            assert result.returncode == 0
+            assert base64.b64decode(result.stdout) == b'picture'
+        else:
+            assert result.returncode != 0 and result.stdout == ''
+    assert not (tmp_path / 'escaped').exists()

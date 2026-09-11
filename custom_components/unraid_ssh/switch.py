@@ -14,7 +14,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from . import actions
 from .const import CONTAINER_ACTION_TIMEOUT, STACK_ACTION_TIMEOUT, VM_ACTION_TIMEOUT
 from .coordinator import UnraidConfigEntry, UnraidCoordinator
-from .entity import UnraidEntity, device_for_container, stack_device, track_new, vm_device
+from .entity import ContainerPictureMixin, UnraidEntity, device_for_container, stack_device, track_new, vm_device
+from .parse import Container
 from .model import (
     Snapshot,
     find_container,
@@ -84,6 +85,19 @@ class UnraidSwitch(UnraidEntity, SwitchEntity):
         await self._run(self.entity_description.off_cmd)
 
 
+class ContainerSwitch(ContainerPictureMixin, UnraidSwitch):
+    """Only individual containers carry a container picture."""
+
+    def __init__(self, coordinator: UnraidCoordinator, container: Container) -> None:
+        self._icons = coordinator.entry.runtime_data.icons
+        self._container_name = container.name
+        super().__init__(
+            coordinator, CONTAINER, device_for_container(coordinator, container),
+            f"container_{container.name}", container.name, find_container,
+            {"container": container.name},
+        )
+
+
 def _build(coordinator: UnraidCoordinator) -> Callable[[Snapshot], dict[str, UnraidSwitch]]:
     def build(snapshot: Snapshot) -> dict[str, UnraidSwitch]:
         out: dict[str, UnraidSwitch] = {}
@@ -102,25 +116,9 @@ def _build(coordinator: UnraidCoordinator) -> Callable[[Snapshot], dict[str, Unr
                     use_device_name=True,
                 )
             for c in stack.containers:
-                out[f"container_{c.name}"] = UnraidSwitch(
-                    coordinator,
-                    CONTAINER,
-                    device_for_container(coordinator, c),
-                    f"container_{c.name}",
-                    c.name,
-                    find_container,
-                    {"container": c.name},
-                )
+                out[f"container_{c.name}"] = ContainerSwitch(coordinator, c)
         for c in snapshot.template_containers:
-            out[f"container_{c.name}"] = UnraidSwitch(
-                coordinator,
-                CONTAINER,
-                device_for_container(coordinator, c),
-                f"container_{c.name}",
-                c.name,
-                find_container,
-                {"container": c.name},
-            )
+            out[f"container_{c.name}"] = ContainerSwitch(coordinator, c)
         for vm in snapshot.vms:
             out[f"vm_{vm.name}"] = UnraidSwitch(coordinator, VM, vm_device(coordinator, vm), f"vm_{vm.name}", vm.name, find_vm)
         return out
