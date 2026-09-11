@@ -244,6 +244,7 @@ def test_build_snapshot_isolates_a_broken_section(fixture):
 
 
 def test_build_snapshot_distinguishes_empty_icons_from_a_failed_icon_section(fixture):
+    """A PHP `{}` confirms removal; a top-level array remains a section failure."""
     sections = collect.split_output(fixture("full_output.txt"))
     sections["icons"] = "{}\n"
     empty = model.build_snapshot(sections, None)
@@ -251,7 +252,7 @@ def test_build_snapshot_distinguishes_empty_icons_from_a_failed_icon_section(fix
     assert empty.icons_valid is True
     assert "icons" not in empty.failed
 
-    sections["icons"] = "broken-json\n"
+    sections["icons"] = "[]\n"
     broken = model.build_snapshot(sections, None)
     assert broken.icon_sources == {}
     assert broken.icons_valid is False
