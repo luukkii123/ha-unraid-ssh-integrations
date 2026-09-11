@@ -106,3 +106,41 @@ async def test_slow_only_container_is_added_with_picture_when_fast_poll_finds_it
     assert [state.entity_id for state in states_for_entry(hass, entry)] == ids
     assert client.calls == 1
     await hass.config_entries.async_unload(entry.entry_id)
+
+
+@pytest.mark.parametrize('failure', ['symlink', 'permission'])
+@pytest.mark.parametrize('url', ['', 'https://example.com/web.png'])
+async def test_unusable_www_keeps_entities_loaded_with_safe_fallback(hass, hass_client_no_auth, tmp_path, monkeypatch, failure, url, caplog):
+    from pathlib import Path
+    import logging
+
+    hass.config.config_dir = str(tmp_path)
+    outside = tmp_path / 'outside'
+    outside.mkdir()
+    marker = outside / 'keep.txt'
+    marker.write_text('untouched')
+    if failure == 'symlink':
+        (tmp_path / 'www').symlink_to(outside, target_is_directory=True)
+    else:
+        original_mkdir = Path.mkdir
+
+        def mkdir(path, *args, **kwargs):
+            if path == tmp_path / 'www/unraid_ssh':
+                raise PermissionError('synthetic cache permission denial')
+            return original_mkdir(path, *args, **kwargs)
+
+        monkeypatch.setattr(Path, 'mkdir', mkdir)
+    client = PictureSSH()
+    entry = await setup_entry(hass, monkeypatch, client, snapshot(url=url))
+    switch, update = states_for_entry(hass, entry)
+    assert switch.state == 'on' and update.state == 'on'
+    assert switch.attributes.get('entity_picture') == update.attributes.get('entity_picture') == (url or None)
+    assert client.calls == 0
+    http = await hass_client_no_auth()
+    assert (await http.get('/local/unraid_ssh/example.png')).status == 404
+    assert list(outside.iterdir()) == [marker]
+    assert marker.read_text() == 'untouched'
+    assert await hass.config_entries.async_remove(entry.entry_id)
+    await hass.async_block_till_done()
+    assert marker.read_text() == 'untouched'
+    assert not [record for record in caplog.records if record.levelno >= logging.ERROR]

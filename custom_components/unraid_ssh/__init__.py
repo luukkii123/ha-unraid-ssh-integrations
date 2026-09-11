@@ -8,6 +8,8 @@ coordinator starts in the background -- its first run takes minutes.
 
 from __future__ import annotations
 
+import logging
+
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryError
@@ -21,6 +23,8 @@ from .coordinator import (
 )
 from .icon_cache import ContainerIconCache, async_remove_icon_files, async_setup_icon_http
 from .ssh import SSHKeyError
+
+_LOGGER = logging.getLogger(__name__)
 
 # Every entry here needs its module: forwarding a platform whose module does
 # not exist makes setup fail.
@@ -43,8 +47,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: UnraidConfigEntry) -> bo
     coordinator = UnraidCoordinator(hass, entry, client)
     await coordinator.async_config_entry_first_refresh()
     updates = UpdateCoordinator(hass, entry, client)
-    await async_setup_icon_http(hass)
-    icons = ContainerIconCache(hass, entry.entry_id, client)
+    local_icons = True
+    try:
+        await async_setup_icon_http(hass)
+    except OSError:
+        # Pictures are optional. Do not copy files without a working route,
+        # and never bypass the cache-directory symlink/permission checks.
+        local_icons = False
+        _LOGGER.warning("Local container pictures unavailable until reload; using URL or standard icons")
+    icons = ContainerIconCache(hass, entry.entry_id, client, local_enabled=local_icons)
     entry.runtime_data = UnraidRuntime(client=client, coordinator=coordinator, updates=updates, icons=icons)
 
     def schedule_icons() -> None:
@@ -71,7 +82,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: UnraidConfigEntry) -> b
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: UnraidConfigEntry) -> None:
-    await async_remove_icon_files(hass, entry.entry_id)
+    try:
+        await async_remove_icon_files(hass, entry.entry_id)
+    except OSError:
+        _LOGGER.warning("Could not remove local container pictures; unsafe or inaccessible directory left untouched")
 
 
 async def _async_reload(hass: HomeAssistant, entry: UnraidConfigEntry) -> None:

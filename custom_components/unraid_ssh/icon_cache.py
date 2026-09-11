@@ -75,9 +75,13 @@ async def async_remove_icon_files(hass: HomeAssistant, entry_id: str) -> None:
 class ContainerIconCache:
     """Two workers drain a coalesced desired-source map; properties stay in RAM."""
 
-    def __init__(self, hass: HomeAssistant, entry_id: str, client: UnraidSSH) -> None:
+    def __init__(
+        self, hass: HomeAssistant, entry_id: str, client: UnraidSSH,
+        *, local_enabled: bool = True,
+    ) -> None:
         self._hass = hass
         self._client = client
+        self._local_enabled = local_enabled
         self._directory = _directory(hass, entry_id)
         self._prefix = f'/local/unraid_ssh/{entry_id}/'
         self._desired: dict[str, tuple[IconSource | None, str | None]] = {}
@@ -190,7 +194,7 @@ class ContainerIconCache:
                 try:
                     picture = fallback
                     image = None
-                    if source and source.kind == 'file':
+                    if self._local_enabled and source and source.kind == 'file':
                         result = await self._client.run(build_icon_read_command(source.value), timeout=POLL_TIMEOUT)
                         if result.exit_status:
                             raise SSHError('icon read failed')
@@ -215,6 +219,8 @@ class ContainerIconCache:
                     _LOGGER.debug('Container icon read or local cache write failed; keeping previous picture')
                 finally:
                     self._inflight.pop(name, None)
+            if not self._local_enabled:
+                return
             async with self._files_lock:
                 keep = {url.removeprefix(self._prefix) for url in self._pictures.values() if url.startswith(self._prefix)}
                 await self._executor(self._cleanup, keep)

@@ -149,16 +149,23 @@ def validate_icon(data: bytes) -> tuple[bytes, str] | None:
             root = ET.fromstring(text)
             if root.tag != _SVG_NS + 'svg':
                 return None
-            for index, node in enumerate(root.iter()):
-                if index >= 4096 or node.tag not in {_SVG_NS + tag for tag in _SVG_ELEMENTS}:
+            # ElementTree serializes recursively. Bound depth before entering
+            # its serializer, even when a tiny document has few total elements.
+            pending = [(root, 1)]
+            count = 0
+            while pending:
+                node, depth = pending.pop()
+                count += 1
+                if depth > 64 or count > 4096 or node.tag not in {_SVG_NS + tag for tag in _SVG_ELEMENTS}:
                     return None
+                pending.extend((child, depth + 1) for child in node)
                 for key, value in node.attrib.items():
                     if (key not in _SVG_ATTRIBUTES or 'url' in value.casefold()
                             or not re.fullmatch(r'[A-Za-z0-9\s.,#+()%\-]*', value)):
                         return None
             output = ET.tostring(root, encoding='utf-8')
             return (output, 'svg') if len(output) <= MAX_ICON_BYTES else None
-        except (UnicodeError, ET.ParseError, ValueError):
+        except (UnicodeError, ET.ParseError, ValueError, RecursionError):
             return None
     formats = {'PNG': 'png', 'JPEG': 'jpg', 'GIF': 'gif', 'WEBP': 'webp'}
     try:

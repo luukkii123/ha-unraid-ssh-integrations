@@ -287,3 +287,35 @@ async def test_shutdown_waits_for_executor_write_before_entry_removal(hass, tmp_
     await hass.async_block_till_done()
     assert cache.picture('web') is None
     assert not (tmp_path / 'www/unraid_ssh/entry-one').exists()
+
+
+def nested_svg(depth):
+    return b'<svg xmlns="http://www.w3.org/2000/svg">' + b'<g>' * depth + b'<path d="M0 0h1v1z"/>' + b'</g>' * depth + b'</svg>'
+
+
+@pytest.mark.parametrize('depth', [65, 1500])
+def test_rejects_excessive_svg_nesting_without_serializer_exception(depth):
+    assert icons.validate_icon(nested_svg(depth)) is None
+
+
+def test_accepts_ordinary_svg_group_nesting():
+    assert icons.validate_icon(nested_svg(8))[1] == 'svg'
+
+
+@pytest.mark.parametrize('url', ['', 'https://example.com/web.png'])
+async def test_deep_svg_uses_url_or_mdi_fallback_and_finishes_revision(hass, tmp_path, url):
+    hass.config.config_dir = str(tmp_path)
+    client = PictureSSH()
+    cache = cache_class()(hass, 'entry-one', client)
+    cache.schedule(snapshot())
+    await hass.async_block_till_done()
+    assert cache.picture('web').endswith('.png')
+    client.data = nested_svg(1500)
+    cache.schedule(snapshot(revision='2:10569', url=url))
+    await hass.async_block_till_done()
+    assert cache.picture('web') == (url or None)
+    cache.schedule(snapshot(revision='2:10569', url=url))
+    await hass.async_block_till_done()
+    assert client.calls == 2
+    assert list((tmp_path / 'www/unraid_ssh/entry-one').iterdir()) == []
+    await cache.async_shutdown()
