@@ -24,8 +24,19 @@ _DOCKER_FORMAT = (
     '{{.Label "com.docker.compose.project"}}\\t{{.Label "com.docker.compose.service"}}\\t'
     '{{json (.Label "net.unraid.docker.icon")}}'
 )
+_ICON_METADATA_PATH = "/var/local/emhttp/plugins/dynamix.docker.manager/docker.json"
+_ICON_EMHTTP_ROOT = "/usr/local/emhttp"
+_ICON_CACHE_ROOTS = (
+    "/usr/local/emhttp/state/plugins/dynamix.docker.manager/images",
+    "/var/lib/docker/unraid/images",
+)
 _ICON_METADATA_PHP = r'''
-$metadata = "/var/local/emhttp/plugins/dynamix.docker.manager/docker.json";
+$metadata = $argv[1] ?? null;
+$emhttpRoot = $argv[2] ?? null;
+$rootArguments = array_slice($argv, 3);
+if (!is_string($metadata) || !is_string($emhttpRoot) || count($rootArguments) !== 2) {
+    exit(1);
+}
 if (!is_file($metadata)) {
     echo "{}";
     exit(0);
@@ -34,47 +45,44 @@ $raw = @file_get_contents($metadata);
 if ($raw === false) {
     exit(1);
 }
-$records = json_decode($raw, true);
-if (!is_array($records) || json_last_error() !== JSON_ERROR_NONE) {
+$records = json_decode($raw);
+if (!$records instanceof stdClass || json_last_error() !== JSON_ERROR_NONE) {
     exit(1);
 }
 $roots = [];
-foreach ([
-    "/usr/local/emhttp/state/plugins/dynamix.docker.manager/images",
-    "/var/lib/docker/unraid/images",
-] as $root) {
+foreach ($rootArguments as $root) {
     $realRoot = realpath($root);
     if ($realRoot !== false) {
         $roots[] = rtrim($realRoot, DIRECTORY_SEPARATOR);
     }
 }
-$result = [];
+$result = new stdClass();
 foreach ($records as $name => $record) {
-    if (!is_string($name) || $name === "" || !is_array($record)) {
+    $name = (string) $name;
+    if ($name === "" || !$record instanceof stdClass) {
         continue;
     }
-    $icon = $record["icon"] ?? null;
+    $icon = $record->icon ?? null;
     if (!is_string($icon) || ($icon = trim($icon)) === "") {
         continue;
     }
     if (strtolower(basename($icon)) === "question.png") {
         continue;
     }
-    $candidate = str_starts_with($icon, "/var/lib/docker/unraid/images/")
-        ? $icon
-        : "/usr/local/emhttp/" . ltrim($icon, "/");
-    $path = realpath($candidate);
-    if ($path === false || !is_file($path)) {
-        continue;
-    }
-    $allowed = false;
-    foreach ($roots as $root) {
-        if (str_starts_with($path, $root . DIRECTORY_SEPARATOR)) {
-            $allowed = true;
-            break;
+    $path = false;
+    foreach ([rtrim($emhttpRoot, "/") . "/" . ltrim($icon, "/"), $icon] as $candidate) {
+        $realCandidate = realpath($candidate);
+        if ($realCandidate === false || !is_file($realCandidate)) {
+            continue;
+        }
+        foreach ($roots as $root) {
+            if (str_starts_with($realCandidate, $root . DIRECTORY_SEPARATOR)) {
+                $path = $realCandidate;
+                break 2;
+            }
         }
     }
-    if (!$allowed) {
+    if ($path === false) {
         continue;
     }
     $mtime = @filemtime($path);
@@ -82,7 +90,7 @@ foreach ($records as $name => $record) {
     if ($mtime === false || $size === false) {
         continue;
     }
-    $result[$name] = ["path" => $path, "revision" => $mtime . ":" . $size];
+    $result->{$name} = (object) ["path" => $path, "revision" => $mtime . ":" . $size];
 }
 $json = json_encode($result, JSON_UNESCAPED_SLASHES);
 if ($json === false) {
@@ -90,7 +98,22 @@ if ($json === false) {
 }
 echo $json;
 '''.strip()
-_ICON_METADATA_COMMAND = f"php -r {shlex.quote(_ICON_METADATA_PHP)}"
+
+
+def build_icon_metadata_command(
+    metadata_path: str = _ICON_METADATA_PATH,
+    emhttp_root: str = _ICON_EMHTTP_ROOT,
+    cache_roots: tuple[str, str] = _ICON_CACHE_ROOTS,
+) -> str:
+    """Build the fixed PHP reader with data paths passed only as quoted arguments."""
+
+    if len(cache_roots) != 2:
+        raise ValueError("exactly two icon cache roots are required")
+    arguments = ("php", "-r", _ICON_METADATA_PHP, metadata_path, emhttp_root, *cache_roots)
+    return " ".join(shlex.quote(argument) for argument in arguments)
+
+
+_ICON_METADATA_COMMAND = build_icon_metadata_command()
 _STACKS_LOOP = (
     f'for d in {COMPOSE_PROJECTS_DIR}/*/; do '
     'printf \'%s\\t%s\\t%s\\n\' "$d" "$(cat "$d/name" 2>/dev/null)" "$(cat "$d/autostart" 2>/dev/null)"; '

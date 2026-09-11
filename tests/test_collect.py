@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import shlex
+import subprocess
 
 import pytest
 
@@ -34,10 +36,83 @@ def test_icon_metadata_command_is_one_fixed_quoted_php_program():
     argv = shlex.split(command)
 
     assert argv[:2] == ["php", "-r"]
-    assert len(argv) == 3
-    assert "/var/local/emhttp/plugins/dynamix.docker.manager/docker.json" in argv[2]
-    assert "/usr/local/emhttp/state/plugins/dynamix.docker.manager/images" in argv[2]
-    assert "/var/lib/docker/unraid/images" in argv[2]
+    assert len(argv) == 7
+    assert argv[3:] == [
+        "/var/local/emhttp/plugins/dynamix.docker.manager/docker.json",
+        "/usr/local/emhttp",
+        "/usr/local/emhttp/state/plugins/dynamix.docker.manager/images",
+        "/var/lib/docker/unraid/images",
+    ]
+
+
+def _run_icon_metadata(tmp_path, metadata: str):
+    metadata_path = tmp_path / "docker.json"
+    metadata_path.write_text(metadata, encoding="utf-8")
+    emhttp_root = tmp_path / "emhttp"
+    state_root = emhttp_root / "state/plugins/dynamix.docker.manager/images"
+    docker_root = tmp_path / "docker-images"
+    state_root.mkdir(parents=True, exist_ok=True)
+    docker_root.mkdir(exist_ok=True)
+    command = collect.build_icon_metadata_command(
+        metadata_path=str(metadata_path),
+        emhttp_root=str(emhttp_root),
+        cache_roots=(str(state_root), str(docker_root)),
+    )
+    return subprocess.run(
+        shlex.split(command),
+        check=False,
+        capture_output=True,
+        text=True,
+    ), state_root
+
+
+def test_icon_metadata_php_preserves_an_empty_json_object(tmp_path):
+    completed, _ = _run_icon_metadata(tmp_path, "{}")
+
+    assert completed.returncode == 0
+    assert completed.stderr == ""
+    assert completed.stdout == "{}"
+
+
+def test_icon_metadata_php_keeps_object_shape_when_every_record_is_rejected(tmp_path):
+    metadata = json.dumps(
+        {
+            "generic": {"icon": "/state/plugins/dynamix.docker.manager/images/question.png"},
+            "empty": {"icon": ""},
+            "wrong_type": {"icon": 12},
+        }
+    )
+    completed, _ = _run_icon_metadata(tmp_path, metadata)
+
+    assert completed.returncode == 0
+    assert completed.stderr == ""
+    assert completed.stdout == "{}"
+
+
+def test_icon_metadata_php_rejects_a_top_level_json_array(tmp_path):
+    completed, _ = _run_icon_metadata(tmp_path, "[]")
+
+    assert completed.returncode != 0
+    assert completed.stdout == ""
+
+
+def test_icon_metadata_php_keeps_numeric_container_names_as_object_keys(tmp_path):
+    state_root = tmp_path / "emhttp/state/plugins/dynamix.docker.manager/images"
+    state_root.mkdir(parents=True)
+    icon = state_root / "numeric.png"
+    icon.write_bytes(b"synthetic image bytes")
+    metadata = json.dumps(
+        {
+            "123": {
+                "icon": "/state/plugins/dynamix.docker.manager/images/numeric.png"
+            }
+        }
+    )
+    completed, _ = _run_icon_metadata(tmp_path, metadata)
+
+    assert completed.returncode == 0
+    assert isinstance(json.loads(completed.stdout), dict)
+    assert set(json.loads(completed.stdout)) == {"123"}
 
 
 def test_split_output(fixture):

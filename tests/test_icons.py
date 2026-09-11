@@ -59,6 +59,10 @@ def test_parse_icon_metadata_keeps_only_safe_cache_files():
     }
 
 
+def test_parse_icon_metadata_accepts_a_confirmed_empty_object():
+    assert parse_icon_metadata("{}") == {}
+
+
 @pytest.mark.parametrize("text", ["", "not-json", "[]", "null"])
 def test_parse_icon_metadata_rejects_an_invalid_section(text):
     with pytest.raises((ValueError, TypeError)):
