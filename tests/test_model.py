@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from unraid_ssh import collect, model, parse
+from unraid_ssh.icons import IconSource
 
 
 def test_normalize_project_name():
@@ -197,6 +198,12 @@ def test_build_snapshot_from_recorded_output(fixture):
     assert finanz is not None and finanz.folder == "" and finanz.present is True
     assert any(c.name == "buschfunk-vorschau" for c in snap.template_containers)
     assert snap.vms and snap.vms[0].name == "Windows 11"
+    assert snap.icon_sources == {
+        "buschfunk-web-1": IconSource(
+            "file", "/var/lib/docker/unraid/images/buschfunk-web.png", "123:456"
+        )
+    }
+    assert snap.icons_valid is True
     assert snap.failed == frozenset()
 
     second = model.build_snapshot(sections, snap)
@@ -234,6 +241,22 @@ def test_build_snapshot_isolates_a_broken_section(fixture):
     assert snap.cpu_times is None
     assert snap.gpus == ()
     assert snap.array is not None                        # the rest survived
+
+
+def test_build_snapshot_distinguishes_empty_icons_from_a_failed_icon_section(fixture):
+    sections = collect.split_output(fixture("full_output.txt"))
+    sections["icons"] = "{}\n"
+    empty = model.build_snapshot(sections, None)
+    assert empty.icon_sources == {}
+    assert empty.icons_valid is True
+    assert "icons" not in empty.failed
+
+    sections["icons"] = "broken-json\n"
+    broken = model.build_snapshot(sections, None)
+    assert broken.icon_sources == {}
+    assert broken.icons_valid is False
+    assert "icons" in broken.failed
+    assert broken.array is not None
 
 
 def test_stack_switchable_only_with_a_compose_file():

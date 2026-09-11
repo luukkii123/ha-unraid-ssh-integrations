@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import shlex
+
 import pytest
 
 from unraid_ssh import collect
@@ -10,7 +12,7 @@ from unraid_ssh import collect
 def test_state_command_contains_every_section_in_order():
     cmd = collect.build_state_command()
     names = [name for name, _ in collect.SECTIONS]
-    assert names == ["var", "disks", "shares", "stat", "mem", "load", "gpu", "docker", "compose", "stacks", "vms"]
+    assert names == ["var", "disks", "shares", "stat", "mem", "load", "gpu", "docker", "icons", "compose", "stacks", "vms"]
     positions = [cmd.index(f"echo '@@@ {name}'") for name in names]
     assert positions == sorted(positions)
     assert cmd.rstrip().endswith("echo '@@@ end'")
@@ -22,8 +24,20 @@ def test_state_command_uses_the_recorded_shapes():
     assert "/var/local/emhttp/var.ini" in cmd
     assert "--format=csv,noheader,nounits" in cmd
     assert '{{.Label "com.docker.compose.project"}}' in cmd
+    assert '{{json (.Label "net.unraid.docker.icon")}}' in cmd
     assert "docker compose ls -a --format json" in cmd
     assert "virsh list --all" in cmd
+
+
+def test_icon_metadata_command_is_one_fixed_quoted_php_program():
+    command = dict(collect.SECTIONS)["icons"]
+    argv = shlex.split(command)
+
+    assert argv[:2] == ["php", "-r"]
+    assert len(argv) == 3
+    assert "/var/local/emhttp/plugins/dynamix.docker.manager/docker.json" in argv[2]
+    assert "/usr/local/emhttp/state/plugins/dynamix.docker.manager/images" in argv[2]
+    assert "/var/lib/docker/unraid/images" in argv[2]
 
 
 def test_split_output(fixture):

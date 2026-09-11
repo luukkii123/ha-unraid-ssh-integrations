@@ -10,11 +10,12 @@ container is ever dropped on the floor.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import re
 from typing import Any, Callable
 
 from . import parse
+from .icons import IconSource, parse_icon_metadata
 from .parse import ArrayInfo, Container, CpuTimes, Disk, Gpu, Load, Memory, Share, Vm
 
 _INVALID_PROJECT_CHARS = re.compile(r"[^a-z0-9_-]+")
@@ -200,6 +201,8 @@ class Snapshot:
     containers: tuple[Container, ...]
     vms: tuple[Vm, ...]
     failed: frozenset[str]
+    icon_sources: dict[str, IconSource] = field(default_factory=dict)
+    icons_valid: bool = True
 
 
 def _section(sections: dict[str, str], name: str, fn: Callable[[str], Any], failed: set[str], default: Any) -> Any:
@@ -224,6 +227,8 @@ def build_snapshot(sections: dict[str, str], previous: Snapshot | None) -> Snaps
     load = _section(sections, "load", parse.parse_load, failed, None)
     gpus = tuple(_section(sections, "gpu", parse.parse_gpus, failed, []))
     containers = _section(sections, "docker", parse.parse_containers, failed, [])
+    icon_sources = _section(sections, "icons", parse_icon_metadata, failed, {})
+    icons_valid = "icons" not in failed
     projects = _section(sections, "compose", parse.parse_compose_ls, failed, [])
     stack_dirs = _section(sections, "stacks", parse.parse_stack_dirs, failed, [])
     vms = tuple(_section(sections, "vms", parse.parse_vms, failed, []))
@@ -243,6 +248,8 @@ def build_snapshot(sections: dict[str, str], previous: Snapshot | None) -> Snaps
         containers=tuple(containers),
         vms=vms,
         failed=frozenset(failed),
+        icon_sources=icon_sources,
+        icons_valid=icons_valid,
     )
 
 
