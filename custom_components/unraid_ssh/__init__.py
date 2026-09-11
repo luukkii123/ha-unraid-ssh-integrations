@@ -13,7 +13,9 @@ import logging
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryError
+from homeassistant.helpers.translation import async_get_translations
 
+from .const import DOMAIN
 from .coordinator import (
     UnraidConfigEntry,
     UnraidCoordinator,
@@ -22,6 +24,7 @@ from .coordinator import (
     build_client,
 )
 from .icon_cache import ContainerIconCache, async_remove_icon_files, async_setup_icon_http
+from .migration import async_reconcile_devices
 from .ssh import SSHKeyError
 
 _LOGGER = logging.getLogger(__name__)
@@ -58,6 +61,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: UnraidConfigEntry) -> bo
     icons = ContainerIconCache(hass, entry.entry_id, client, local_enabled=local_icons)
     entry.runtime_data = UnraidRuntime(client=client, coordinator=coordinator, updates=updates, icons=icons)
 
+    # Direct device creation precedes platform translation loading.
+    await async_get_translations(hass, hass.config.language, "device", {DOMAIN})
+    async_reconcile_devices(hass, entry)
+    entry.async_on_unload(coordinator.async_add_listener(lambda: async_reconcile_devices(hass, entry)))
+
     def schedule_icons() -> None:
         if coordinator.last_update_success and coordinator.data is not None:
             icons.schedule(coordinator.data)
@@ -69,6 +77,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: UnraidConfigEntry) -> bo
     except BaseException:
         await icons.async_shutdown()
         raise
+    async_reconcile_devices(hass, entry)
     # The first digest check takes minutes; it must not delay setup or fail it.
     entry.async_create_background_task(hass, updates.async_refresh(), "unraid_ssh first update check")
     entry.async_on_unload(entry.add_update_listener(_async_reload))

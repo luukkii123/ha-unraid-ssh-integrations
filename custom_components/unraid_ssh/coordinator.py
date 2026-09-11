@@ -8,7 +8,7 @@ unique image -- minutes, not seconds, so it runs on its own schedule.
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 import logging
 from typing import TYPE_CHECKING, Any
@@ -59,6 +59,8 @@ class UnraidRuntime:
     coordinator: "UnraidCoordinator"
     updates: "UpdateCoordinator"                 # always set in async_setup_entry
     icons: "ContainerIconCache"
+    server_device_id: str | None = None
+    device_infos: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 def setting(entry: ConfigEntry, key: str, default: Any) -> Any:

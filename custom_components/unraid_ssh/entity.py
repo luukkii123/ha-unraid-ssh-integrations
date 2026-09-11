@@ -6,6 +6,7 @@ from collections.abc import Callable
 from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import Entity, EntityDescription
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -15,8 +16,7 @@ from .const import DOMAIN, ENTITY_ICONS
 from .coordinator import UnraidCoordinator
 from .devices import container_device_suffix, share_device_suffix
 from .icon_cache import ContainerIconCache
-from .model import Snapshot, Stack, stack_key
-from .model import find_stack
+from .model import Snapshot, Stack, find_container, find_stack, stack_key
 from .parse import Container, Disk, Share, Vm
 
 MANUFACTURER = "Lime Technology"
@@ -64,9 +64,36 @@ def _child(
         translation_placeholders=placeholders,
         manufacturer=MANUFACTURER,
         model=model,
-        via_device=_server_id(coordinator),
+        **_parent_device(coordinator),
         **extra,
     )
+
+
+def _parent_device(coordinator: UnraidCoordinator) -> dict[str, Any]:
+    """Use the parent API available in the installed HA version."""
+    if "via_device_id" not in DeviceInfo.__annotations__:
+        return {"via_device": _server_id(coordinator)}
+    device_id = getattr(coordinator.entry.runtime_data, "server_device_id", None)
+    return {"via_device_id": device_id} if device_id else {}
+
+
+def _preserve_failed_device(entity: Entity, coordinator: UnraidCoordinator, info: DeviceInfo) -> DeviceInfo:
+    """A partial snapshot must not let platform setup bypass migration guards."""
+    snapshot = coordinator.data
+    suffix = entity.unique_id.removeprefix(coordinator.entry.entry_id + "_")
+    section = next((section for prefixes, section in (
+        (("container_", "update_"), "docker"),
+        (("gpu_util_", "gpu_vram_", "gpu_temp_", "gpu_power_"), "gpu"),
+        (("share_used_", "share_free_"), "shares"),
+    ) if suffix.startswith(prefixes)), None)
+    if snapshot is None or section not in snapshot.failed or entity.hass is None:
+        return info
+    registry = er.async_get(entity.hass)
+    for item in er.async_entries_for_config_entry(registry, coordinator.entry.entry_id):
+        if item.platform == DOMAIN and item.unique_id == entity.unique_id and item.device_id:
+            if device := dr.async_get(entity.hass).async_get(item.device_id):
+                return DeviceInfo(identifiers=device.identifiers)
+    return info
 
 
 def disk_device(coordinator: UnraidCoordinator, disk: Disk) -> DeviceInfo:
@@ -149,6 +176,10 @@ class UnraidEntity(CoordinatorEntity[UnraidCoordinator]):
         self._finder = finder
 
     @property
+    def device_info(self) -> DeviceInfo:
+        return _preserve_failed_device(self, self.coordinator, self._attr_device_info)
+
+    @property
     def snapshot(self) -> Snapshot | None:
         return self.coordinator.data
 
@@ -199,6 +230,15 @@ class ContainerPictureMixin:
 
     _icons: ContainerIconCache
     _container_name: str
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        fast = getattr(self, "_fast", self.coordinator)
+        snapshot = fast.data
+        if snapshot is not None and "docker" not in snapshot.failed:
+            if container := find_container(snapshot, self._container_name):
+                self._attr_device_info = device_for_container(fast, container)
+        return _preserve_failed_device(self, fast, self._attr_device_info)
 
     @property
     def entity_picture(self) -> str | None:
