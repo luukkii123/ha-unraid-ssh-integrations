@@ -9,12 +9,14 @@ from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import Entity, EntityDescription
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpdateCoordinator
 
 from .const import DOMAIN, ENTITY_ICONS
 from .coordinator import UnraidCoordinator
+from .devices import container_device_suffix, share_device_suffix
 from .model import Snapshot, Stack, stack_key
-from .parse import Container, Disk, Gpu, Vm
+from .model import find_stack
+from .parse import Container, Disk, Share, Vm
 
 MANUFACTURER = "Lime Technology"
 
@@ -35,8 +37,15 @@ def server_device(coordinator: UnraidCoordinator) -> DeviceInfo:
     )
 
 
-def _child(coordinator: UnraidCoordinator, suffix: str, label: str, model: str, **extra: Any) -> DeviceInfo:
-    """A device below the server one, named `<entry title> <label>`.
+def _child(
+    coordinator: UnraidCoordinator,
+    suffix: str,
+    translation_key: str,
+    model: str,
+    component: str | None = None,
+    **extra: Any,
+) -> DeviceInfo:
+    """A translated device below the server one.
 
     Every child carries the entry title, without exception. With
     `has_entity_name` the device name becomes the stem of every entity id
@@ -45,9 +54,13 @@ def _child(coordinator: UnraidCoordinator, suffix: str, label: str, model: str, 
     `nginx` from colliding with the entity ids of the other Unraid integration,
     where Home Assistant would silently append `_2`.
     """
+    placeholders = {"prefix": coordinator.entry.title}
+    if component is not None:
+        placeholders["component"] = component
     return DeviceInfo(
         identifiers={(DOMAIN, f"{coordinator.entry.entry_id}_{suffix}")},
-        name=f"{coordinator.entry.title} {label}",
+        translation_key=translation_key,
+        translation_placeholders=placeholders,
         manufacturer=MANUFACTURER,
         model=model,
         via_device=_server_id(coordinator),
@@ -55,12 +68,8 @@ def _child(coordinator: UnraidCoordinator, suffix: str, label: str, model: str, 
     )
 
 
-def gpu_device(coordinator: UnraidCoordinator, gpu: Gpu) -> DeviceInfo:
-    return _child(coordinator, f"gpu_{gpu.index}", gpu.name, "GPU")
-
-
 def disk_device(coordinator: UnraidCoordinator, disk: Disk) -> DeviceInfo:
-    return _child(coordinator, f"disk_{disk.name}", disk.name, f"{disk.kind} disk")
+    return _child(coordinator, f"disk_{disk.name}", "disk", f"{disk.kind} disk", disk.name)
 
 
 def stack_device(coordinator: UnraidCoordinator, stack: Stack) -> DeviceInfo:
@@ -73,15 +82,32 @@ def stack_device(coordinator: UnraidCoordinator, stack: Stack) -> DeviceInfo:
     move.
     """
     key = stack_key(stack)
-    return _child(coordinator, f"stack_{key}", f"Stack {key}", "Compose stack")
+    return _child(coordinator, f"stack_{key}", "stack", "Compose stack", key)
 
 
-def container_device(coordinator: UnraidCoordinator, container: Container) -> DeviceInfo:
-    return _child(coordinator, f"container_{container.name}", container.name, "Docker container")
+def loose_containers_device(coordinator: UnraidCoordinator) -> DeviceInfo:
+    return _child(coordinator, "containers", "standalone_containers", "Docker containers")
+
+
+def device_for_container(coordinator: UnraidCoordinator, container: Container) -> DeviceInfo:
+    """Return the shared standalone device or the container's stack device."""
+    snapshot = coordinator.data
+    if snapshot is None:
+        raise ValueError("container device assignment requires a fast snapshot")
+    suffix = container_device_suffix(snapshot, container)
+    if not container.project:
+        return loose_containers_device(coordinator)
+    if stack := find_stack(snapshot, container.project):
+        return stack_device(coordinator, stack)
+    return _child(coordinator, suffix, "stack", "Compose stack", container.project)
+
+
+def share_device(coordinator: UnraidCoordinator, share: Share) -> DeviceInfo:
+    return _child(coordinator, share_device_suffix(share.name), "share", "Unraid share", share.name)
 
 
 def vm_device(coordinator: UnraidCoordinator, vm: Vm) -> DeviceInfo:
-    return _child(coordinator, f"vm_{vm.name}", vm.name, "Virtual machine")
+    return _child(coordinator, f"vm_{vm.name}", "vm", "Virtual machine", vm.name)
 
 
 class UnraidEntity(CoordinatorEntity[UnraidCoordinator]):
@@ -140,11 +166,18 @@ class UnraidEntity(CoordinatorEntity[UnraidCoordinator]):
 
 
 def track_new(
-    coordinator: UnraidCoordinator,
+    coordinator: DataUpdateCoordinator[Any],
     async_add_entities: AddEntitiesCallback,
-    build: Callable[[Snapshot], dict[str, Entity]],
+    build: Callable[[Any], dict[str, Entity]],
+    *,
+    listen_to: tuple[DataUpdateCoordinator[Any], ...] = (),
 ) -> None:
-    """Add entities for keys not seen before — now and on every coordinator update."""
+    """Add unseen entities when primary data or a dependent coordinator changes.
+
+    ``build`` always receives ``coordinator.data``. Platforms whose build also
+    depends on another coordinator pass it through ``listen_to`` so discovery
+    is retried when that secondary data becomes complete.
+    """
     known: set[str] = set()
 
     def _sync() -> None:
@@ -156,4 +189,5 @@ def track_new(
             async_add_entities(list(fresh.values()))
 
     _sync()
-    coordinator.entry.async_on_unload(coordinator.async_add_listener(_sync))
+    for source in (coordinator, *listen_to):
+        coordinator.entry.async_on_unload(source.async_add_listener(_sync))

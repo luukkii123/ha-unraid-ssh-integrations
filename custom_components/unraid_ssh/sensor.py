@@ -21,7 +21,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import ARRAY_STATES, DISK_STATUSES, VM_STATES
 from .coordinator import UnraidConfigEntry, UnraidCoordinator, UpdateCoordinator, UpdateState
-from .entity import UnraidEntity, disk_device, gpu_device, server_device, track_new, vm_device
+from .entity import UnraidEntity, disk_device, server_device, share_device, track_new, vm_device
 from .model import Snapshot, find_disk, find_gpu, find_share, find_vm
 
 
@@ -157,13 +157,22 @@ def _build(coordinator: UnraidCoordinator) -> Callable[[Snapshot], dict[str, Unr
         for desc in SERVER:
             out[desc.key] = UnraidSensor(coordinator, desc, server, desc.key)
         for share in snapshot.shares:
+            device = share_device(coordinator, share)
             for desc in SHARE:
                 key = f"{desc.key}_{share.name}"
-                out[key] = UnraidSensor(coordinator, desc, server, key, share.name, find_share, {"share": share.name})
+                out[key] = UnraidSensor(coordinator, desc, device, key, share.name, find_share)
         for gpu in snapshot.gpus:
             for desc in GPU:
                 key = f"{desc.key}_{gpu.index}"
-                out[key] = UnraidSensor(coordinator, desc, gpu_device(coordinator, gpu), key, gpu.index, find_gpu)
+                out[key] = UnraidSensor(
+                    coordinator,
+                    desc,
+                    server,
+                    key,
+                    gpu.index,
+                    find_gpu,
+                    {"gpu": gpu.name, "index": str(gpu.index)},
+                )
         for disk in snapshot.disks:
             for desc in DISK:
                 # Pool members (raid2, raid3, ...) carry no filesystem of their

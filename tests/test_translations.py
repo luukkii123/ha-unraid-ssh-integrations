@@ -57,10 +57,53 @@ def test_switch_keys_are_translated():
 
 
 def test_update_and_counter_keys_are_translated():
-    """Two names for the update entity: on a stack device it must say which
-    container it belongs to, on the container's own device that would just
-    repeat the device name. Both keys must exist in every file."""
+    """Every container update names its container on the shared device."""
     entity = _load("strings.json")["entity"]
-    assert {"container_update", "image_update"} <= set(entity["update"])
+    assert "container_update" in entity["update"]
     assert "updates_available" in entity["sensor"]
 
+
+def test_device_type_names_are_translatable():
+    expected = {
+        "strings.json": {
+            "disk": "{prefix} Disk {component}",
+            "stack": "{prefix} Stack {component}",
+            "vm": "{prefix} VM {component}",
+            "standalone_containers": "{prefix} Standalone containers",
+            "share": "{prefix} Share {component}",
+        },
+        "translations/en.json": {
+            "disk": "{prefix} Disk {component}",
+            "stack": "{prefix} Stack {component}",
+            "vm": "{prefix} VM {component}",
+            "standalone_containers": "{prefix} Standalone containers",
+            "share": "{prefix} Share {component}",
+        },
+        "translations/de.json": {
+            "disk": "{prefix} Festplatte {component}",
+            "stack": "{prefix} Stack {component}",
+            "vm": "{prefix} VM {component}",
+            "standalone_containers": "{prefix} Freie Container",
+            "share": "{prefix} Share {component}",
+        },
+    }
+
+    for filename, names in expected.items():
+        assert {key: value["name"] for key, value in _load(filename)["device"].items()} == names
+
+
+def test_grouped_entity_names_include_the_component_once():
+    expected = {
+        "strings.json": ("Used", "Free", "GPU {index} {gpu} utilization", "{container} update"),
+        "translations/en.json": ("Used", "Free", "GPU {index} {gpu} utilization", "{container} update"),
+        "translations/de.json": ("Belegt", "Frei", "GPU {index} {gpu} Auslastung", "{container} Update"),
+    }
+
+    for filename, names in expected.items():
+        entity = _load(filename)["entity"]
+        assert (
+            entity["sensor"]["share_used"]["name"],
+            entity["sensor"]["share_free"]["name"],
+            entity["sensor"]["gpu_util"]["name"],
+            entity["update"]["container_update"]["name"],
+        ) == names

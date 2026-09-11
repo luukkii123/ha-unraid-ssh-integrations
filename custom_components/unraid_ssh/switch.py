@@ -14,7 +14,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from . import actions
 from .const import CONTAINER_ACTION_TIMEOUT, STACK_ACTION_TIMEOUT, VM_ACTION_TIMEOUT
 from .coordinator import UnraidConfigEntry, UnraidCoordinator
-from .entity import UnraidEntity, container_device, stack_device, track_new, vm_device
+from .entity import UnraidEntity, device_for_container, stack_device, track_new, vm_device
 from .model import (
     Snapshot,
     find_container,
@@ -103,12 +103,23 @@ def _build(coordinator: UnraidCoordinator) -> Callable[[Snapshot], dict[str, Unr
                 )
             for c in stack.containers:
                 out[f"container_{c.name}"] = UnraidSwitch(
-                    coordinator, CONTAINER, device, f"container_{c.name}", c.name, find_container, {"container": c.name}
+                    coordinator,
+                    CONTAINER,
+                    device_for_container(coordinator, c),
+                    f"container_{c.name}",
+                    c.name,
+                    find_container,
+                    {"container": c.name},
                 )
         for c in snapshot.template_containers:
             out[f"container_{c.name}"] = UnraidSwitch(
-                coordinator, CONTAINER, container_device(coordinator, c), f"container_{c.name}", c.name, find_container,
-                use_device_name=True,
+                coordinator,
+                CONTAINER,
+                device_for_container(coordinator, c),
+                f"container_{c.name}",
+                c.name,
+                find_container,
+                {"container": c.name},
             )
         for vm in snapshot.vms:
             out[f"vm_{vm.name}"] = UnraidSwitch(coordinator, VM, vm_device(coordinator, vm), f"vm_{vm.name}", vm.name, find_vm)
