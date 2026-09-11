@@ -844,20 +844,20 @@ MemAvailable:   26790428 kB
 0, NVIDIA GeForce GTX 1080 Ti, 24, 1055, 11264, 52, 78.32
 @@@ docker
 deckbuilder-app-1	running	deckbuilder-app	deckbuilder	app
-deckbuilder_db	running	fixture_placeholder:16-alpine	deckbuilder	db
-buschfunk-web-1	running	buschfunk-web	buschfunk	web
+deckbuilder_db	running	synthetic-fixture-value:16-alpine	deckbuilder	db
+buschfunk-web-1	running	buschfunk-web	buschfunk	web	"https://example.com/buschfunk-web.png"
 buschfunk-kern-1	running	buschfunk-kern	buschfunk	kern
 bookshelf	running	ghcr.io/luukkii123/bookshelf:hardcover-v0.4.20.7	mediadownload	bookshelf
 metadata-auth-watch	running	busybox:latest	mediadownload	metadata-auth-watch
 rreading-glasses	running	blampe/rreading-glasses:hardcover	mediadownload	rreading-glasses
-rreading-glasses-db	running	fixture_placeholder:17	mediadownload	rreading-glasses-db
+rreading-glasses-db	running	synthetic-fixture-value:17	mediadownload	rreading-glasses-db
 busch-finanz-web-1	running	busch-finanz-web	busch-finanz	web
 busch-finanz-api-1	running	busch-finanz-api	busch-finanz	api
-busch-finanz-fixture_placeholder-1	running	fixture_placeholder:16-alpine	busch-finanz	fixture_placeholder
+busch-finanz-synthetic-fixture-value-1	running	synthetic-fixture-value:16-alpine	busch-finanz	synthetic-fixture-value
 dw-check-tmp2	created	a95dae93b5c1		
 buschfunk-synapse-1	running	ghcr.io/element-hq/synapse:v1.159.0	buschfunk	synapse
-buschfunk-fixture_placeholder-synapse-1	running	fixture_placeholder:16-alpine	buschfunk	fixture_placeholder-synapse
-buschfunk-fixture_placeholder-kern-1	running	fixture_placeholder:16-alpine	buschfunk	fixture_placeholder-kern
+buschfunk-synthetic-fixture-value-synapse-1	running	synthetic-fixture-value:16-alpine	buschfunk	synthetic-fixture-value-synapse
+buschfunk-synthetic-fixture-value-kern-1	running	synthetic-fixture-value:16-alpine	buschfunk	synthetic-fixture-value-kern
 buschfunk-bruecke-whatsapp-1	running	dock.mau.dev/mautrix/whatsapp	buschfunk	bruecke-whatsapp
 buschfunk-bruecke-telegram-1	running	dock.mau.dev/mautrix/telegram:v0.15.3	buschfunk	bruecke-telegram
 buschfunk-bruecke-signal-1	running	dock.mau.dev/mautrix/signal	buschfunk	bruecke-signal
@@ -870,12 +870,12 @@ immich_server	running	ghcr.io/immich-app/immich-server:release	immich	immich-ser
 immich-mqtt-bridge	running	immich-immich-mqtt-bridge	immich	immich-mqtt-bridge
 facetrain	running	immich-facetrain	immich	facetrain
 immich_redis	running	registry.hub.docker.com/library/redis:6.2-alpine	immich	redis
-immich_fixture_placeholder	running	ghcr.io/immich-app/fixture_placeholder:14-vectorchord0.4.3-pgvectors0.2.0	immich	database
+immich_synthetic-fixture-value	running	ghcr.io/immich-app/synthetic-fixture-value:14-vectorchord0.4.3-pgvectors0.2.0	immich	database
 immich_machine_learning	running	ghcr.io/immich-app/immich-machine-learning:release	immich	immich-machine-learning
 immich_power_tools	running	ghcr.io/varun-raj/immich-power-tools:latest	immich	power-tools
 paperless-webserver-1	running	ghcr.io/paperless-ngx/paperless-ngx:latest	paperless	webserver
 buschfunk-ntfy-1	running	binwiederhier/ntfy:v2.11.0	buschfunk	ntfy
-buschfunk-fixture_placeholder-bruecken-1	running	fixture_placeholder:16-alpine	buschfunk	fixture_placeholder-bruecken
+buschfunk-synthetic-fixture-value-bruecken-1	running	synthetic-fixture-value:16-alpine	buschfunk	synthetic-fixture-value-bruecken
 teddycloud	running	ghcr.io/toniebox-reverse-engineering/teddycloud:latest	smarthome	teddycloud
 ESPHome	running	ghcr.io/esphome/esphome:stable	smarthome	esphome
 frigate	running	ghcr.io/blakeblackshear/frigate:stable-tensorrt	smarthome	frigate
@@ -893,13 +893,15 @@ newtarr	running	ghcr.io/elfhosted/newtarr:v1.0.0	mediadownload	newtarr
 prowlarr	running	lscr.io/linuxserver/prowlarr:latest	mediadownload	prowlarr
 deckbuilder-agent	running	deckbuilder-agent	deckbuilder	agent
 Lancache	running	lancachenet/monolithic:latest	lancache	lancache
-paperless-db-1	running	fixture_placeholder:17	paperless	db
+paperless-db-1	running	synthetic-fixture-value:17	paperless	db
 paperless-broker-1	running	redis:8	paperless	broker
 LANCache-Prefill	running	ghcr.io/ich777/lancache-prefill	lancache	lancache-prefill
 buschfunk-attrappe-1	running	buschfunk-attrappe	buschfunk	attrappe
 buschfunk-vorschau	running	nginx:alpine		
 claude-station	exited	claude-station-claude-station	claude-station	claude-station
 gps-bridge	running	gps_bridge-gps-bridge	gps_bridge	gps-bridge
+@@@ icons
+{"buschfunk-web-1":{"path":"/var/lib/docker/unraid/images/buschfunk-web.png","revision":"123:456"}}
 @@@ compose
 [{"Name":"busch-finanz","Status":"running(3)","ConfigFiles":"/mnt/user/Data/Claude Projekte/busch-finanz/docker-compose.yml"},{"Name":"buschfunk","Status":"running(15)","ConfigFiles":"/mnt/user/Data/Claude Projekte/buschfunk/docker-compose.yml,/boot/config/plugins/compose.manager/projects/Buschfunk/docker-compose.yml,/boot/config/plugins/compose.manager/projects/Buschfunk/docker-compose.override.yml,/mnt/user/Data/Claude Projekte/buschfunk/docker-compose.attrappe.yml"},{"Name":"claude-station","Status":"exited(1)","ConfigFiles":"/boot/config/plugins/compose.manager/projects/Claude-Station/docker-compose.yml,/boot/config/plugins/compose.manager/projects/Claude-Station/docker-compose.override.yml"},{"Name":"deckbuilder","Status":"running(3)","ConfigFiles":"/boot/config/plugins/compose.manager/projects/Deckbuilder/docker-compose.yml,/boot/config/plugins/compose.manager/projects/Deckbuilder/docker-compose.override.yml"},{"Name":"gps_bridge","Status":"running(1)","ConfigFiles":"/boot/config/plugins/compose.manager/projects/gps-bridge/docker-compose.yml,/boot/config/plugins/compose.manager/projects/gps-bridge/docker-compose.override.yml"},{"Name":"immich","Status":"exited(1), running(7)","ConfigFiles":"/boot/config/plugins/compose.manager/projects/Immich/docker-compose.yml,/boot/config/plugins/compose.manager/projects/Immich/docker-compose.override.yml"},{"Name":"lancache","Status":"running(2)","ConfigFiles":"/boot/config/plugins/compose.manager/projects/LanCache/docker-compose.yml,/boot/config/plugins/compose.manager/projects/LanCache/docker-compose.override.yml"},{"Name":"mediadownload","Status":"running(11)","ConfigFiles":"/boot/config/plugins/compose.manager/projects/MediaDownload/docker-compose.yml,/boot/config/plugins/compose.manager/projects/MediaDownload/docker-compose.override.yml"},{"Name":"paperless","Status":"running(3)","ConfigFiles":"/boot/config/plugins/compose.manager/projects/Paperless/docker-compose.yml,/boot/config/plugins/compose.manager/projects/Paperless/docker-compose.override.yml"},{"Name":"servertools","Status":"running(2)","ConfigFiles":"/boot/config/plugins/compose.manager/projects/Servertools/docker-compose.yml,/boot/config/plugins/compose.manager/projects/Servertools/docker-compose.override.yml"},{"Name":"smarthome","Status":"running(4)","ConfigFiles":"/boot/config/plugins/compose.manager/projects/Smarthome/docker-compose.yml,/boot/config/plugins/compose.manager/projects/Smarthome/docker-compose.override.yml"},{"Name":"streaming","Status":"running(2)","ConfigFiles":"/boot/config/plugins/compose.manager/projects/Streaming/docker-compose.yml,/boot/config/plugins/compose.manager/projects/Streaming/docker-compose.override.yml"}]
 @@@ stacks

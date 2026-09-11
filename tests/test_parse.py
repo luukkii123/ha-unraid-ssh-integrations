@@ -131,6 +131,29 @@ def test_parse_containers(fixture):
     assert web.state in ("running", "exited", "created", "paused", "restarting", "dead")
 
 
+def test_docker_icon_label_is_optional_and_json_encoded():
+    old = parse.parse_containers("web\trunning\texample/web:latest\tstack\tweb")[0]
+    new = parse.parse_containers(
+        'web\trunning\texample/web:latest\tstack\tweb\t"https://example.com/web.png"'
+    )[0]
+    empty = parse.parse_containers('web\trunning\texample/web:latest\tstack\tweb\t""')[0]
+    malformed = parse.parse_containers(
+        "web\trunning\texample/web:latest\tstack\tweb\tnot-json"
+    )[0]
+
+    assert old.icon is None
+    assert new.icon == "https://example.com/web.png"
+    assert empty.icon is None
+    assert malformed.icon is None
+
+
+def test_parse_containers_discards_a_json_label_with_the_wrong_type():
+    container = parse.parse_containers(
+        "web\trunning\texample/web:latest\tstack\tweb\t123"
+    )[0]
+    assert container.icon is None
+
+
 def test_parse_compose_ls(fixture):
     projects = parse.parse_compose_ls(fixture("compose.json"))
     names = {p.name for p in projects}

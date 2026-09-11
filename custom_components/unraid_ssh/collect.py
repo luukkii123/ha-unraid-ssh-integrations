@@ -21,8 +21,76 @@ from .const import (
 _GPU_QUERY = "index,name,utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw"
 _DOCKER_FORMAT = (
     '{{.Names}}\\t{{.State}}\\t{{.Image}}\\t'
-    '{{.Label "com.docker.compose.project"}}\\t{{.Label "com.docker.compose.service"}}'
+    '{{.Label "com.docker.compose.project"}}\\t{{.Label "com.docker.compose.service"}}\\t'
+    '{{json (.Label "net.unraid.docker.icon")}}'
 )
+_ICON_METADATA_PHP = r'''
+$metadata = "/var/local/emhttp/plugins/dynamix.docker.manager/docker.json";
+if (!is_file($metadata)) {
+    echo "{}";
+    exit(0);
+}
+$raw = @file_get_contents($metadata);
+if ($raw === false) {
+    exit(1);
+}
+$records = json_decode($raw, true);
+if (!is_array($records) || json_last_error() !== JSON_ERROR_NONE) {
+    exit(1);
+}
+$roots = [];
+foreach ([
+    "/usr/local/emhttp/state/plugins/dynamix.docker.manager/images",
+    "/var/lib/docker/unraid/images",
+] as $root) {
+    $realRoot = realpath($root);
+    if ($realRoot !== false) {
+        $roots[] = rtrim($realRoot, DIRECTORY_SEPARATOR);
+    }
+}
+$result = [];
+foreach ($records as $name => $record) {
+    if (!is_string($name) || $name === "" || !is_array($record)) {
+        continue;
+    }
+    $icon = $record["icon"] ?? null;
+    if (!is_string($icon) || ($icon = trim($icon)) === "") {
+        continue;
+    }
+    if (strtolower(basename($icon)) === "question.png") {
+        continue;
+    }
+    $candidate = str_starts_with($icon, "/var/lib/docker/unraid/images/")
+        ? $icon
+        : "/usr/local/emhttp/" . ltrim($icon, "/");
+    $path = realpath($candidate);
+    if ($path === false || !is_file($path)) {
+        continue;
+    }
+    $allowed = false;
+    foreach ($roots as $root) {
+        if (str_starts_with($path, $root . DIRECTORY_SEPARATOR)) {
+            $allowed = true;
+            break;
+        }
+    }
+    if (!$allowed) {
+        continue;
+    }
+    $mtime = @filemtime($path);
+    $size = @filesize($path);
+    if ($mtime === false || $size === false) {
+        continue;
+    }
+    $result[$name] = ["path" => $path, "revision" => $mtime . ":" . $size];
+}
+$json = json_encode($result, JSON_UNESCAPED_SLASHES);
+if ($json === false) {
+    exit(1);
+}
+echo $json;
+'''.strip()
+_ICON_METADATA_COMMAND = f"php -r {shlex.quote(_ICON_METADATA_PHP)}"
 _STACKS_LOOP = (
     f'for d in {COMPOSE_PROJECTS_DIR}/*/; do '
     'printf \'%s\\t%s\\t%s\\n\' "$d" "$(cat "$d/name" 2>/dev/null)" "$(cat "$d/autostart" 2>/dev/null)"; '
@@ -38,6 +106,7 @@ SECTIONS: tuple[tuple[str, str], ...] = (
     ("load", "cat /proc/loadavg /proc/uptime"),
     ("gpu", f"nvidia-smi --query-gpu={_GPU_QUERY} --format=csv,noheader,nounits"),
     ("docker", f"docker ps -a --format '{_DOCKER_FORMAT}'"),
+    ("icons", _ICON_METADATA_COMMAND),
     ("compose", "docker compose ls -a --format json"),
     ("stacks", _STACKS_LOOP),
     ("vms", "virsh list --all"),

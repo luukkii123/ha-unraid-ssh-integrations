@@ -290,6 +290,7 @@ class Container:
     image: str
     project: str               # com.docker.compose.project label, "" for template containers
     service: str               # com.docker.compose.service label, "" for template containers
+    icon: str | None = None     # decoded net.unraid.docker.icon label
 
 
 def parse_containers(text: str) -> list[Container]:
@@ -299,7 +300,24 @@ def parse_containers(text: str) -> list[Container]:
         if len(parts) < 3 or not parts[0]:
             continue
         parts += [""] * (5 - len(parts))
-        out.append(Container(name=parts[0], state=parts[1], image=parts[2], project=parts[3], service=parts[4]))
+        icon: str | None = None
+        if len(parts) > 5:
+            try:
+                decoded = json.loads(parts[5])
+            except (json.JSONDecodeError, TypeError):
+                decoded = None
+            if isinstance(decoded, str) and decoded.strip():
+                icon = decoded.strip()
+        out.append(
+            Container(
+                name=parts[0],
+                state=parts[1],
+                image=parts[2],
+                project=parts[3],
+                service=parts[4],
+                icon=icon,
+            )
+        )
     return out
 
 
