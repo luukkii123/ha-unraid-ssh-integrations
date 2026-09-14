@@ -6,6 +6,14 @@ from .model import Snapshot, find_stack, stack_key
 from .parse import Container
 
 
+def container_assignment_complete(snapshot: Snapshot, container: Container | None) -> bool:
+    """Project members need stack metadata to resolve their stable folder ID."""
+    return "docker" not in snapshot.failed and (
+        (container is not None and not container.project)
+        or not {"compose", "stacks"} & snapshot.failed
+    )
+
+
 def container_device_suffix(snapshot: Snapshot, container: Container) -> str:
     """Return the stable child-device suffix for a container."""
     if not container.project:

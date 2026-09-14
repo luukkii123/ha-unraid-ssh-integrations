@@ -72,11 +72,11 @@ def own_entities(hass, entry):
     return {e.unique_id.removeprefix(entry.entry_id): e for e in er.async_entries_for_config_entry(er.async_get(hass), entry.entry_id)}
 
 
-async def load(hass, monkeypatch, entry, snapshot):
+async def load(hass, monkeypatch, entry, snapshot, images=None):
     from custom_components.unraid_ssh.coordinator import UpdateState
     monkeypatch.setattr('custom_components.unraid_ssh.build_client', lambda entry: PictureSSH())
     monkeypatch.setattr('custom_components.unraid_ssh.coordinator.UnraidCoordinator._async_update_data', AsyncMock(return_value=snapshot))
-    monkeypatch.setattr('custom_components.unraid_ssh.coordinator.UpdateCoordinator._async_update_data', AsyncMock(return_value=UpdateState({}, None)))
+    monkeypatch.setattr('custom_components.unraid_ssh.coordinator.UpdateCoordinator._async_update_data', AsyncMock(return_value=UpdateState(images or {}, None)))
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
@@ -140,6 +140,95 @@ async def test_setup_migrates_legacy_settings_and_translated_names(hass, monkeyp
     for entity_id, identity in before.items():
         item = entities.async_get(entity_id)
         assert (item.unique_id, item.name, item.disabled_by) == identity
+    await hass.config_entries.async_unload(entry.entry_id)
+
+
+def stack_inventory(failed=None):
+    """Real merging loses the folder/project match for either failed section."""
+    from custom_components.unraid_ssh.model import merge_stacks
+    from custom_components.unraid_ssh.parse import ComposeProject, StackDir
+    base = inventory()
+    member = replace(base.containers[0], project='project', service='web')
+    containers = (member, base.containers[1])
+    stacks, loose = merge_stacks(
+        [] if failed == 'stacks' else [StackDir('/stacks/My Stack', 'My Stack', False)],
+        [] if failed == 'compose' else [ComposeProject('project', 'running(1)', 1, ('/stacks/My Stack/compose.yaml',))],
+        list(containers),
+    )
+    return replace(base, containers=containers, stacks=stacks, template_containers=loose,
+                   failed=frozenset({failed}) if failed else frozenset())
+
+
+@pytest.mark.parametrize('failed', ['compose', 'stacks'])
+@pytest.mark.parametrize('previous_suffix', ['_stack_My Stack', '_container_alpha_one'])
+async def test_partial_stack_setup_preserves_existing_assignments_and_recovery(
+        hass, monkeypatch, tmp_path, failed, previous_suffix):
+    from custom_components.unraid_ssh.model import ImageStatus
+    from homeassistant.helpers.entity_platform import async_get_platforms
+    hass.config.config_dir = str(tmp_path)
+    entry, _, old = legacy(hass)
+    devices, entities = dr.async_get(hass), er.async_get(hass)
+    previous = lookup(hass, entry, previous_suffix)
+    before = own_entities(hass, entry)
+    tracked = ('_container_alpha_one', '_update_alpha_one')
+    for suffix in tracked:
+        entities.async_update_entity(before[suffix].entity_id, device_id=previous.id)
+    before = {suffix: entities.async_get(before[suffix].entity_id) for suffix in tracked}
+    images = {'alpha_one': ImageStatus('alpha_one', 'example/a', 'sha256:old', 'sha256:new', True)}
+    await load(hass, monkeypatch, entry, stack_inventory(failed), images)
+    loaded = [entity for platform in async_get_platforms(hass, DOMAIN)
+              for entity in platform.entities.values()
+              if entity.entity_id in {item.entity_id for item in before.values()}]
+    assert len(loaded) == 2
+    for suffix, item in before.items():
+        current = own_entities(hass, entry)[suffix]
+        assert (current.entity_id, current.unique_id, current.device_id) == (item.entity_id, item.unique_id, previous.id)
+    assert all(entity.device_info['identifiers'] == previous.identifiers for entity in loaded)
+    assert lookup(hass, entry, '_stack_project') is None
+    # Successful Docker labels suffice for a free container even during stack failure.
+    assert own_entities(hass, entry)['_container_beta'].device_id == lookup(hass, entry, '_containers').id
+    fast = entry.runtime_data.coordinator
+    fast.async_set_updated_data(stack_inventory())
+    await hass.async_block_till_done()
+    stable = lookup(hass, entry, '_stack_My Stack')
+    assert all(own_entities(hass, entry)[suffix].device_id == stable.id for suffix in tracked)
+    assert all(entity.device_info['identifiers'] == stable.identifiers for entity in loaded)
+    # A subsequent partial update also leaves loaded instances and IDs in place.
+    fast.async_set_updated_data(stack_inventory(failed))
+    await hass.async_block_till_done()
+    assert all(own_entities(hass, entry)[suffix].device_id == stable.id for suffix in tracked)
+    assert all(entity.device_info['identifiers'] == stable.identifiers for entity in loaded)
+    assert lookup(hass, entry, '_stack_project') is None
+    fast.async_set_updated_data(stack_inventory())
+    await hass.async_block_till_done()
+    assert lookup(hass, entry, '_stack_My Stack').id == stable.id
+    for suffix, item in before.items():
+        current = own_entities(hass, entry)[suffix]
+        assert (current.entity_id, current.unique_id) == (item.entity_id, item.unique_id)
+    assert devices.async_get(old.server.id) is not None
+    await hass.config_entries.async_unload(entry.entry_id)
+
+
+@pytest.mark.parametrize('failed', ['compose', 'stacks'])
+async def test_partial_stack_discovery_defers_new_entities_until_recovery(hass, monkeypatch, tmp_path, failed):
+    from custom_components.unraid_ssh.model import ImageStatus
+    hass.config.config_dir = str(tmp_path)
+    entry = MockConfigEntry(domain=DOMAIN, title='Example Unraid', data={'host': 'example.invalid'})
+    entry.add_to_hass(hass)
+    images = {name: ImageStatus(name, 'example/image', 'sha256:old', 'sha256:new', True)
+              for name in ('alpha_one', 'beta')}
+    await load(hass, monkeypatch, entry, stack_inventory(failed), images)
+    current = own_entities(hass, entry)
+    assert '_container_alpha_one' not in current and '_update_alpha_one' not in current
+    assert lookup(hass, entry, '_stack_project') is None
+    assert current['_container_beta'].device_id == current['_update_beta'].device_id == lookup(hass, entry, '_containers').id
+    entry.runtime_data.coordinator.async_set_updated_data(stack_inventory())
+    await hass.async_block_till_done()
+    current = own_entities(hass, entry)
+    assert current['_container_alpha_one'].device_id == current['_update_alpha_one'].device_id == lookup(hass, entry, '_stack_My Stack').id
+    assert hass.states.get(current['_container_alpha_one'].entity_id) is not None
+    assert hass.states.get(current['_update_alpha_one'].entity_id) is not None
+    assert lookup(hass, entry, '_stack_project') is None
     await hass.config_entries.async_unload(entry.entry_id)
 
 

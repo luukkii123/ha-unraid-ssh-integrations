@@ -14,7 +14,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from . import actions
 from .const import CONTAINER_ACTION_TIMEOUT, STACK_ACTION_TIMEOUT, VM_ACTION_TIMEOUT
 from .coordinator import UnraidConfigEntry, UnraidCoordinator
-from .entity import ContainerPictureMixin, UnraidEntity, device_for_container, stack_device, track_new, vm_device
+from .entity import ContainerPictureMixin, UnraidEntity, can_register_container, device_for_container, stack_device, track_new, vm_device
 from .parse import Container
 from .model import (
     Snapshot,
@@ -103,7 +103,7 @@ def _build(coordinator: UnraidCoordinator) -> Callable[[Snapshot], dict[str, Unr
         out: dict[str, UnraidSwitch] = {}
         for stack in snapshot.stacks:
             device = stack_device(coordinator, stack)
-            if stack_switchable(stack):
+            if not {"docker", "compose", "stacks"} & snapshot.failed and stack_switchable(stack):
                 # Unique id, device and lookup all on the stable key:
                 # `stack.name` changes when the stack goes down, and an entity
                 # that changes its unique id leaves the old one behind as a
@@ -116,9 +116,11 @@ def _build(coordinator: UnraidCoordinator) -> Callable[[Snapshot], dict[str, Unr
                     use_device_name=True,
                 )
             for c in stack.containers:
-                out[f"container_{c.name}"] = ContainerSwitch(coordinator, c)
+                if can_register_container(coordinator, c, "switch"):
+                    out[f"container_{c.name}"] = ContainerSwitch(coordinator, c)
         for c in snapshot.template_containers:
-            out[f"container_{c.name}"] = ContainerSwitch(coordinator, c)
+            if can_register_container(coordinator, c, "switch"):
+                out[f"container_{c.name}"] = ContainerSwitch(coordinator, c)
         for vm in snapshot.vms:
             out[f"vm_{vm.name}"] = UnraidSwitch(coordinator, VM, vm_device(coordinator, vm), f"vm_{vm.name}", vm.name, find_vm)
         return out

@@ -8,6 +8,7 @@ from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 from .const import DOMAIN
 from .coordinator import UnraidConfigEntry
+from .devices import container_assignment_complete
 from .entity import (
     device_for_container,
     disk_device,
@@ -57,6 +58,8 @@ def async_reconcile_devices(hass: HomeAssistant, entry: UnraidConfigEntry) -> No
     if "docker" not in snapshot.failed:
         current = {container.name: container for container in snapshot.containers}
         for container in current.values():
+            if not container_assignment_complete(snapshot, container):
+                continue
             device_id = ensure(device_for_container(coordinator, container))
             target("switch", "container_" + container.name, device_id)
             target("update", "update_" + container.name, device_id)

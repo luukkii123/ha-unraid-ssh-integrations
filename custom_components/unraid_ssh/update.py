@@ -23,7 +23,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from . import actions
 from .const import UPDATE_TIMEOUT
 from .coordinator import UnraidConfigEntry, UnraidCoordinator, UpdateCoordinator, UpdateState
-from .entity import ContainerPictureMixin, device_for_container, track_new
+from .entity import ContainerPictureMixin, can_register_container, device_for_container, track_new
 from .model import ImageStatus, container_updatable, find_container, find_stack
 from .parse import Container
 
@@ -136,6 +136,7 @@ def _build(updates: UpdateCoordinator, fast: UnraidCoordinator) -> Callable[[Upd
             name: ContainerUpdate(updates, fast, container)
             for name in state.images
             if (container := find_container(snapshot, name)) is not None
+            and can_register_container(fast, container, "update")
         }
 
     return build
