@@ -23,3 +23,23 @@ jobs:
       - uses: hacs/action@main
         with:
           category: integration
+
+  tests:
+    name: Tests (HA ${{ matrix.ha }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - ha: "2026.7.0"
+            plugin: "0.13.344"
+          - ha: "2026.9.2"
+            plugin: "0.13.365"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build resolved Python 3.14 / HA environment (includes PHP)
+        run: docker build --target tests --build-arg HA_VERSION=${{ matrix.ha }} --build-arg TEST_PLUGIN=${{ matrix.plugin }} -f tests_ha/Dockerfile -t unraid-ssh-tests .
+      - name: Pure Python and real PHP commands
+        run: docker run --rm -v "$PWD:/repo" -w /repo unraid-ssh-tests python -m pytest -p no:homeassistant tests -q
+      - name: Real Home Assistant platforms
+        run: docker run --rm -v "$PWD:/repo" -w /repo unraid-ssh-tests python -m pytest -c tests_ha/pytest.ini tests_ha -q
