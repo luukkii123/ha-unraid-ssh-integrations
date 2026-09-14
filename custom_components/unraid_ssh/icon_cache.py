@@ -216,7 +216,11 @@ class ContainerIconCache:
                             self._publish(name, picture)
                 except (SSHError, OSError):
                     # No path, image content, stdout or server credentials in logs.
-                    _LOGGER.debug('Container icon read or local cache write failed; keeping previous picture')
+                    _LOGGER.debug('Container icon read or local cache write failed')
+                    if (self._desired.get(name) == selected and not self._closed
+                            and name not in self._pictures):
+                        self._publish(name, fallback)
+                    # Do not finish this revision: the next poll may recover.
                 finally:
                     self._inflight.pop(name, None)
             if not self._local_enabled:

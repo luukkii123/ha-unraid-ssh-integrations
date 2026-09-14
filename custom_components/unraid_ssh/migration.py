@@ -75,9 +75,12 @@ def async_reconcile_devices(hass: HomeAssistant, entry: UnraidConfigEntry) -> No
                 # Exact legacy identifiers establish the former standalone
                 # classification even when a temporary container has gone.
                 if name not in current:
-                    device_id = ensure(loose_containers_device(coordinator))
-                    target("switch", "container_" + name, device_id)
-                    target("update", "update_" + name, device_id)
+                    for entity in er.async_entries_for_device(entities, device.id, include_disabled_entities=True):
+                        if entity.config_entry_id != entry.entry_id or entity.platform != DOMAIN:
+                            continue
+                        for entity_domain, suffix in (("switch", "container_" + name), ("update", "update_" + name)):
+                            if entity.domain == entity_domain and entity.unique_id == entry.entry_id + "_" + suffix:
+                                target(entity_domain, suffix, ensure(loose_containers_device(coordinator)))
         if not {"compose", "stacks"} & snapshot.failed:
             for stack in snapshot.stacks:
                 ensure(stack_device(coordinator, stack))

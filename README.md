@@ -134,12 +134,14 @@ Entitätsnamen.
 
 ## Geprüft am 14.09.2026
 
-Die reproduzierbaren Prüfungen und festgelegten Abhängigkeiten stehen in
+Die nachbaubare Versionsmatrix und Resolverstrategie stehen in
 [`tests_ha/README.md`](tests_ha/README.md). Getestet werden **HA Core 2026.7.0
 und 2026.9.2**, jeweils mit Python 3.14 und `asyncssh==2.24.0`. Die höhere
 Mindestversion korrigiert eine bereits bestehende Abhängigkeitsinkompatibilität:
 `asyncssh` benötigt `cryptography>=48.0.1`, ältere HA-Versionen pinnen ältere
-Versionen. Die Bibliothek wird dafür nicht heruntergestuft.
+Versionen. Die Bibliothek wird dafür nicht heruntergestuft. Python-Basisimage,
+APT-Pakete und nicht separat gepinnte transitive Abhängigkeiten sind beweglich;
+die Befehle garantieren daher keine bitgleichen Testumgebungen.
 
 Die Abnahme umfasst reine Parser-/Befehls-/Transporttests, echte HA-Plattformen,
 Registry-Migration, Reload, Cache-Lebenszyklus und HTTP-Bilder. Der isolierte

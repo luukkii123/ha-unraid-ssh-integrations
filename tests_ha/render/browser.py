@@ -4,6 +4,7 @@ from pathlib import Path
 import sys
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
+from picture_assertions import assert_container_pictures
 
 sys.path.insert(0, '/helpers')
 from regeln import messe_text, bewerte
@@ -58,11 +59,8 @@ def card_evidence(page, entities):
         result = {'id':ident, 'tag':tag, 'config':config, 'pictures':pictures, 'text':text,
                   'measurement':messe_text(page, '#'+ident)}
         if tag == 'HUI-ENTITIES-CARD' and config.get('title') == 'Container pictures':
-            for suffix in ('_container_alpha_one', '_update_alpha_one', '_container_beta', '_update_beta'):
-                matching = [i for i in pictures if i['entity'] == entities[suffix]]
-                assert len(matching) == 1 and matching[0]['width'] > 0 and matching[0]['visible'], (suffix, pictures)
+            assert_container_pictures(pictures, entities)
             assert 'alpha_one' in text and 'beta' in text
-            assert pictures[0]['src'] == pictures[1]['src']
         if tag == 'HUI-TILE-CARD':
             assert 'alpha_one' in text
             if config.get('show_entity_picture'):
