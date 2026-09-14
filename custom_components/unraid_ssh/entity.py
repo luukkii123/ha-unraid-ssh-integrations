@@ -14,7 +14,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity, DataUpda
 
 from .const import DOMAIN, ENTITY_ICONS
 from .coordinator import UnraidCoordinator
-from .devices import container_device_suffix, share_device_suffix
+from .devices import container_assignment_complete, container_device_suffix, share_device_suffix
 from .icon_cache import ContainerIconCache
 from .model import Snapshot, Stack, find_container, find_stack, stack_key
 from .parse import Container, Disk, Share, Vm
@@ -86,7 +86,14 @@ def _preserve_failed_device(entity: Entity, coordinator: UnraidCoordinator, info
         (("gpu_util_", "gpu_vram_", "gpu_temp_", "gpu_power_"), "gpu"),
         (("share_used_", "share_free_"), "shares"),
     ) if suffix.startswith(prefixes)), None)
-    if snapshot is None or section not in snapshot.failed or entity.hass is None:
+    if snapshot is None or entity.hass is None:
+        return info
+    if section == "docker":
+        name = suffix.partition("_")[2]
+        failed = not container_assignment_complete(snapshot, find_container(snapshot, name))
+    else:
+        failed = section in snapshot.failed
+    if not failed:
         return info
     registry = er.async_get(entity.hass)
     for item in er.async_entries_for_config_entry(registry, coordinator.entry.entry_id):
@@ -94,6 +101,24 @@ def _preserve_failed_device(entity: Entity, coordinator: UnraidCoordinator, info
             if device := dr.async_get(entity.hass).async_get(item.device_id):
                 return DeviceInfo(identifiers=device.identifiers)
     return info
+
+
+def can_register_container(coordinator: UnraidCoordinator, container: Container, domain: str) -> bool:
+    """Defer uncertain new assignments; existing entities retain their device."""
+    if container_assignment_complete(coordinator.data, container):
+        return True
+    registry = er.async_get(coordinator.hass)
+    prefix = "container" if domain == "switch" else "update"
+    unique_id = f"{coordinator.entry.entry_id}_{prefix}_{container.name}"
+    entity_id = registry.async_get_entity_id(domain, DOMAIN, unique_id)
+    if entity_id is None:
+        return False
+    item = registry.async_get(entity_id)
+    return (
+        item.config_entry_id == coordinator.entry.entry_id
+        and item.device_id is not None
+        and dr.async_get(coordinator.hass).async_get(item.device_id) is not None
+    )
 
 
 def disk_device(coordinator: UnraidCoordinator, disk: Disk) -> DeviceInfo:
@@ -235,9 +260,10 @@ class ContainerPictureMixin:
     def device_info(self) -> DeviceInfo:
         fast = getattr(self, "_fast", self.coordinator)
         snapshot = fast.data
-        if snapshot is not None and "docker" not in snapshot.failed:
+        if snapshot is not None:
             if container := find_container(snapshot, self._container_name):
-                self._attr_device_info = device_for_container(fast, container)
+                if container_assignment_complete(snapshot, container):
+                    self._attr_device_info = device_for_container(fast, container)
         return _preserve_failed_device(self, fast, self._attr_device_info)
 
     @property
