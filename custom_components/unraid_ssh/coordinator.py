@@ -145,6 +145,8 @@ class UpdateCoordinator(DataUpdateCoordinator[UpdateState]):
             try:
                 inventory_result = await self.client.run(build_inventory_command(), timeout=POLL_TIMEOUT * 3)
                 sections = split_output(inventory_result.stdout)
+                if not {"containers", "images"} <= sections.keys():
+                    raise SSHError("incomplete update inventory")
                 inventory = parse_inventory(sections.get("containers", ""))
                 digests = parse_image_digests(sections.get("images", ""))
                 refs = refs_to_check(inventory, digests)

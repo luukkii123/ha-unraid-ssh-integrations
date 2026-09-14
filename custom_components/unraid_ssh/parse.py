@@ -337,10 +337,9 @@ class ComposeProject:
 def parse_compose_ls(text: str) -> list[ComposeProject]:
     if not text.strip():
         return []
-    try:
-        rows = json.loads(text)
-    except json.JSONDecodeError:
-        return []
+    rows = json.loads(text)
+    if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+        raise ValueError("compose inventory must be a list of objects")
     out: list[ComposeProject] = []
     for row in rows:
         status = str(row.get("Status") or "")

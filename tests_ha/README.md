@@ -17,6 +17,11 @@ sein. Das Plugin pinnt seine HA-Testabhängigkeiten. Die CI verwendet dieselben
 Pins. `2026.7.0` ist die Mindestversion: `asyncssh==2.24.0` benötigt
 `cryptography>=48.0.1`, womit ältere HA-Pins nicht kompatibel sind.
 
+Nachbaubar sind die Versionsmatrix und die gemeinsame Resolverstrategie,
+nicht eine bitgleiche Umgebung: Das Python-Basisimage ist nicht per Digest
+fixiert; APT-Pakete und nicht separat gepinnte transitive Python-Abhängigkeiten
+können sich bei einem Neubau ändern. Es gibt dafür keine vollständigen Locks.
+
 Vom Repository aus, je Matrixzeile mit deren Versionswerten:
 
 ```sh
@@ -62,7 +67,7 @@ angesehen werden. Ein Fixture beweist keine produktive Migration oder Schaltung.
 
 ## Ergebnis und Darstellungsgrenzen
 
-Abschlusssuiten: **116 reine Tests** (PHP tatsächlich ausgeführt) und **62 HA-
+Abschlusssuiten: **154 reine Tests** (PHP tatsächlich ausgeführt) und **76 HA-
 Tests je Matrixversion**, ohne übersprungene Tests. Die Browsermatrix umfasst
 je Sprache sechs Dashboard- und sechs Geräteübersichtsansichten. Zusätzliche
 Belege zeigen den echten Tile-Editor, kurze Karten-Anzeigenamen auf 320 px,

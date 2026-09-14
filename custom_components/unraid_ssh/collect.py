@@ -1,8 +1,8 @@
 """The single command chain sent per poll, and the splitting of its output.
 
-Every section is one standard command; failures are swallowed with
-`2>/dev/null` so a missing `nvidia-smi` empties one section instead of
-breaking the poll. The final `@@@ end` marker proves the output is complete.
+Every section carries its exit status; stderr stays private and failed sections
+are discarded without breaking the poll. Bash pipefail preserves pipeline errors.
+The final `@@@ end` marker proves the output is complete.
 """
 
 from __future__ import annotations
@@ -116,7 +116,11 @@ def build_icon_metadata_command(
 _ICON_METADATA_COMMAND = build_icon_metadata_command()
 _STACKS_LOOP = (
     f'for d in {COMPOSE_PROJECTS_DIR}/*/; do '
-    'printf \'%s\\t%s\\t%s\\n\' "$d" "$(cat "$d/name" 2>/dev/null)" "$(cat "$d/autostart" 2>/dev/null)"; '
+    '[ -d "$d" ] || continue; '
+    'name=; autostart=; '
+    'if [ -e "$d/name" ]; then name=$(cat "$d/name") || exit "$?"; fi; '
+    'if [ -e "$d/autostart" ]; then autostart=$(cat "$d/autostart") || exit "$?"; fi; '
+    "printf '%s\\t%s\\t%s\\n' \"$d\" \"$name\" \"$autostart\" || exit \"$?\"; "
     "done"
 )
 
@@ -140,11 +144,21 @@ class TruncatedOutput(Exception):
     """The end marker is missing — the output was cut off."""
 
 
-def build_state_command() -> str:
-    parts = [f"echo '{SECTION_MARKER}{name}'; {cmd} 2>/dev/null" for name, cmd in SECTIONS]
+def _build_sections(sections: tuple[tuple[str, str], ...]) -> str:
+    """Isolate commands and report their status even after partial stdout."""
+    parts = []
+    for name, command in sections:
+        parts.append(
+            f"echo '{SECTION_MARKER}{name}'; "
+            f"bash -o pipefail -c {shlex.quote(command)} 2>/dev/null; "
+            f"printf '{SECTION_MARKER}{name} status=%s\\n' \"$?\""
+        )
     parts.append(f"echo '{SECTION_MARKER}{END_SECTION}'")
     return "; ".join(parts)
 
+
+def build_state_command() -> str:
+    return _build_sections(SECTIONS)
 
 #: A marker is `@@@ <name>` running to the end of its line. It is deliberately
 #: NOT required to start one: `echo '@@@ next'` writes straight after whatever
@@ -154,7 +168,7 @@ def build_state_command() -> str:
 #: swallow every following section and fail the whole poll as truncated. The
 #: name is restricted to lowercase words -- every section is one -- so no line
 #: of real output can be mistaken for a marker.
-_MARKER_RE = re.compile(re.escape(SECTION_MARKER) + r"([a-z_]+)[ \t]*(?:\n|\Z)")
+_MARKER_RE = re.compile(re.escape(SECTION_MARKER) + r"([a-z_]+)(?: status=([0-9]+))?[ \t]*(?:\n|\Z)")
 
 
 def split_output(text: str) -> dict[str, str]:
@@ -162,9 +176,18 @@ def split_output(text: str) -> dict[str, str]:
     current: str | None = None
     content_start = 0
     for match in _MARKER_RE.finditer(text):
-        if current is not None:
-            sections[current] = text[content_start:match.start()]
-        current = match.group(1)
+        name, status = match.group(1), match.group(2)
+        if status is not None:
+            if current == name and status == "0":
+                sections[name] = text[content_start:match.start()]
+            else:
+                sections.pop(name, None)
+            current = None
+        else:
+            # Historical fixtures/inventory output have no status trailer.
+            if current is not None:
+                sections[current] = text[content_start:match.start()]
+            current = name
         content_start = match.end()
     if current != END_SECTION:
         raise TruncatedOutput("output ended without the end marker")
@@ -177,23 +200,20 @@ def split_output(text: str) -> dict[str, str]:
 # unlike `docker ps --format`, it does NOT turn a literal `\t` into a tab, so the
 # separator has to be a template action (`{{"\t"}}`). Recorded against docker
 # 29.5.3 — with a plain `\t` every row came back as one field.
+_CONTAINER_IDS = 'ids=$(docker ps -aq) || exit "$?"; [ -n "$ids" ] || exit 0; '
 _INSPECT = (
-    "docker inspect --format "
-    "'{{.Name}}{{\"\\t\"}}{{.Config.Image}}{{\"\\t\"}}{{.Image}}' $(docker ps -aq)"
+    _CONTAINER_IDS + "docker inspect --format "
+    "'{{.Name}}{{\"\\t\"}}{{.Config.Image}}{{\"\\t\"}}{{.Image}}' $ids"
 )
 _IMAGES = (
-    "docker image inspect --format '{{.Id}}{{\"\\t\"}}{{join .RepoDigests \",\"}}' "
-    "$(docker ps -aq | xargs -r docker inspect --format '{{.Image}}' | sort -u)"
+    _CONTAINER_IDS + "images=$(docker inspect --format '{{.Image}}' $ids | sort -u) || exit \"$?\"; "
+    "docker image inspect --format '{{.Id}}{{\"\\t\"}}{{join .RepoDigests \",\"}}' $images"
 )
 
 
 def build_inventory_command() -> str:
     """Container -> image ref/id, plus the repo digests of every image in use."""
-    return (
-        f"echo '{SECTION_MARKER}containers'; {_INSPECT} 2>/dev/null; "
-        f"echo '{SECTION_MARKER}images'; {_IMAGES} 2>/dev/null; "
-        f"echo '{SECTION_MARKER}{END_SECTION}'"
-    )
+    return _build_sections((("containers", _INSPECT), ("images", _IMAGES)))
 
 
 def build_remote_digest_command(refs: list[str]) -> str:
