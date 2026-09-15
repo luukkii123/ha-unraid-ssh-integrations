@@ -6,6 +6,7 @@ the config flow generates itself. Nothing here depends on Unraid Connect.
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import Final
 
 DOMAIN: Final = "unraid_ssh"
@@ -50,6 +51,13 @@ UPDATE_CONTAINER_SH: Final = (
     "/usr/local/emhttp/plugins/dynamix.docker.manager/scripts/update_container"
 )
 
+# --- orphan cleanup ------------------------------------------------------------
+#: How long a unique id has to stay absent from successful polls before its
+#: entity is removed. `compose up` and Unraid's own `update_container` tear a
+#: container down and recreate it within seconds; without this window the user
+#: would lose that entity's area, name and labels for a restart.
+STALE_GRACE: Final = timedelta(minutes=5)
+
 # --- output markers ------------------------------------------------------------
 SECTION_MARKER: Final = "@@@ "
 END_SECTION: Final = "end"
@@ -77,6 +85,9 @@ ENTITY_ICONS: Final = {
     "check_updates": "mdi:package-down",
     "gpu_util": "mdi:expansion-card",
     "gpu_vram": "mdi:memory",
+    "gpu_fan": "mdi:fan",
+    "fan_rpm": "mdi:fan",
+    "fan_percent": "mdi:fan",
     "disk_status": "mdi:harddisk",
     "disk_spundown": "mdi:sleep",
     "share_used": "mdi:folder-network",
