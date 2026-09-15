@@ -16,7 +16,20 @@ from typing import Any, Callable
 
 from . import parse
 from .icons import IconSource, parse_icon_metadata
-from .parse import ArrayInfo, Container, CpuTimes, Disk, Gpu, Load, Memory, Share, Vm
+from .parse import (
+    ArrayInfo,
+    Container,
+    CpuTimes,
+    Disk,
+    Gpu,
+    HwSensor,
+    Load,
+    Memory,
+    Share,
+    Vm,
+    sensor_key,
+    temp_plausible,
+)
 
 _INVALID_PROJECT_CHARS = re.compile(r"[^a-z0-9_-]+")
 
@@ -203,6 +216,10 @@ class Snapshot:
     failed: frozenset[str]
     icon_sources: dict[str, IconSource] = field(default_factory=dict)
     icons_valid: bool = True
+    # Last, and defaulted, only because dataclasses demand it: every field
+    # above it is required, and the tests that build snapshots by hand
+    # would all have to change for a channel list most of them do not use.
+    sensors: tuple[HwSensor, ...] = ()
 
 
 def _section(sections: dict[str, str], name: str, fn: Callable[[str], Any], failed: set[str], default: Any) -> Any:
@@ -226,6 +243,7 @@ def build_snapshot(sections: dict[str, str], previous: Snapshot | None) -> Snaps
     memory = _section(sections, "mem", parse.parse_meminfo, failed, None)
     load = _section(sections, "load", parse.parse_load, failed, None)
     gpus = tuple(_section(sections, "gpu", parse.parse_gpus, failed, []))
+    sensors = tuple(_section(sections, "sensors", parse.parse_sensors, failed, []))
     containers = _section(sections, "docker", parse.parse_containers, failed, [])
     icon_sources = _section(sections, "icons", parse_icon_metadata, failed, {})
     icons_valid = "icons" not in failed
@@ -243,6 +261,7 @@ def build_snapshot(sections: dict[str, str], previous: Snapshot | None) -> Snaps
         memory=memory,
         load=load,
         gpus=gpus,
+        sensors=sensors,
         stacks=stacks,
         template_containers=loose,
         containers=tuple(containers),
@@ -263,6 +282,86 @@ def find_share(snapshot: Snapshot, name: str) -> Share | None:
 
 def find_gpu(snapshot: Snapshot, index: int) -> Gpu | None:
     return next((g for g in snapshot.gpus if g.index == index), None)
+
+
+def find_sensor(snapshot: Snapshot, key: str) -> HwSensor | None:
+    """By `parse.sensor_key` -- chip, device and channel, never the hwmon number."""
+    return next((s for s in snapshot.sensors if sensor_key(s) == key), None)
+
+
+#: Chip names mapped to something a dashboard can read. `Composite` and
+#: `Sensor 1` mean nothing on their own; `NVMe Composite` does.
+_CHIP_NAMES: tuple[tuple[str, str], ...] = (
+    ("k10temp", "CPU"),
+    ("coretemp", "CPU"),
+    ("nvme", "NVMe"),
+    ("drivetemp", "Disk"),
+)
+
+#: Prefixes of the Super-I/O chips that sit on the board itself. The exact
+#: model varies per board (nct6798 here, nct6775/it8728 elsewhere), and the
+#: number is no help to anyone reading a dashboard.
+_BOARD_CHIPS: tuple[str, ...] = ("nct67", "nct61", "it87", "it86")
+
+
+def is_board_chip(chip: str) -> bool:
+    return chip.lower().startswith(_BOARD_CHIPS)
+
+
+def chip_display_name(chip: str) -> str:
+    """A readable chip name, or the raw one when the table has no entry."""
+    lowered = chip.lower()
+    if is_board_chip(lowered):
+        return "Mainboard"
+    return next((name for prefix, name in _CHIP_NAMES if lowered.startswith(prefix)), chip)
+
+
+def _find_labelled(snapshot: Snapshot, chip: str, label: str) -> HwSensor | None:
+    """One temperature channel, addressed the way a human would: chip and label."""
+    for sensor in snapshot.sensors:
+        if sensor.kind != "temp":
+            continue
+        matches_chip = is_board_chip(sensor.chip) if chip == "board" else sensor.chip.lower().startswith(chip)
+        if matches_chip and (sensor.label == label or sensor.channel == label):
+            return sensor
+    return None
+
+
+#: In order of trust. `Tctl` is what AMD itself reports to the fan control,
+#: `Package id 0` is Intel's equivalent; `CPUTIN` is the board's own reading
+#: of the socket and only a fallback, because some boards wire it elsewhere.
+_CPU_TEMP_SOURCES: tuple[tuple[str, str], ...] = (
+    ("k10temp", "Tctl"),
+    ("k10temp", "Tdie"),
+    ("coretemp", "Package id 0"),
+    ("board", "CPUTIN"),
+)
+_BOARD_TEMP_SOURCES: tuple[tuple[str, str], ...] = (
+    ("board", "SYSTIN"),
+    ("acpitz", "temp1"),
+)
+
+
+def _first_temp(snapshot: Snapshot, sources: tuple[tuple[str, str], ...]) -> float | None:
+    for chip, label in sources:
+        sensor = _find_labelled(snapshot, chip, label)
+        if sensor is not None and temp_plausible(sensor.value):
+            return float(sensor.value)
+    return None
+
+
+def cpu_temp(snapshot: Snapshot) -> float | None:
+    """The one CPU temperature a dashboard can bind to for good.
+
+    The per-channel sensors carry the chip in their id, so a board swap or a
+    move from AMD to Intel renames every one of them. This one does not: it
+    picks the best source that exists right now and keeps its own id.
+    """
+    return _first_temp(snapshot, _CPU_TEMP_SOURCES)
+
+
+def board_temp(snapshot: Snapshot) -> float | None:
+    return _first_temp(snapshot, _BOARD_TEMP_SOURCES)
 
 
 def stack_switchable(stack: Stack) -> bool:

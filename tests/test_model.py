@@ -329,3 +329,67 @@ def test_container_updatable_only_where_the_update_command_can_work():
 
     # Orphan: the project label points at no stack we resolved.
     assert model.container_updatable(web, None) is False
+
+
+# --- hwmon channels in the snapshot ---------------------------------------------
+
+
+def _sensor_snapshot(fixture, name="sensors.tsv"):
+    sections = collect.split_output(fixture("full_output.txt"))
+    sections["sensors"] = fixture(name)
+    return model.build_snapshot(sections, None)
+
+
+def test_build_snapshot_carries_the_hwmon_channels(fixture):
+    snap = _sensor_snapshot(fixture)
+    assert "sensors" not in snap.failed
+    assert len(snap.sensors) == 27                       # 20 temperatures + 7 fans
+    assert model.find_sensor(snap, "nct6798_nct6775_656_fan4") is not None
+    assert model.find_sensor(snap, "hwmon2_fan4") is None
+
+
+def test_missing_sensor_section_fails_only_itself(fixture):
+    sections = collect.split_output(fixture("full_output.txt"))
+    del sections["sensors"]
+    snap = model.build_snapshot(sections, None)
+    assert snap.failed == frozenset({"sensors"})
+    assert snap.sensors == () and snap.disks
+
+
+def test_chip_display_names_cover_the_chips_this_board_has():
+    assert model.chip_display_name("k10temp") == "CPU"
+    assert model.chip_display_name("coretemp") == "CPU"
+    assert model.chip_display_name("nvme") == "NVMe"
+    assert model.chip_display_name("nct6798") == "Mainboard"
+    assert model.chip_display_name("it8728") == "Mainboard"
+    assert model.chip_display_name("drivetemp") == "Disk"
+    assert model.chip_display_name("amdgpu") == "amdgpu"  # unknown: the raw name
+
+
+def test_fixed_server_temperatures_pick_the_best_source(fixture):
+    snap = _sensor_snapshot(fixture)
+    assert model.cpu_temp(snap) == 71.8                  # k10temp Tctl
+    assert model.board_temp(snap) == 43.0                # nct6798 SYSTIN
+
+
+def test_fixed_server_temperatures_fall_back_and_then_give_up(fixture):
+    sections = collect.split_output(fixture("full_output.txt"))
+    intel = "coretemp\tcoretemp.0\ttemp1\tPackage id 0\t54000\t\t\n"
+    board = "nct6798\tnct6775.656\ttemp2\tCPUTIN\t57000\t\t\n"
+    acpi = "acpitz\t\ttemp1\t\t39000\t\t\n"
+    sections["sensors"] = board + acpi
+    assert model.cpu_temp(model.build_snapshot(sections, None)) == 57.0
+    sections["sensors"] = intel + acpi
+    snap = model.build_snapshot(sections, None)
+    assert model.cpu_temp(snap) == 54.0
+    assert model.board_temp(snap) == 39.0                # no SYSTIN: acpitz temp1
+    sections["sensors"] = "nvme\tnvme0\ttemp1\tComposite\t51850\t\t\n"
+    bare = model.build_snapshot(sections, None)
+    assert model.cpu_temp(bare) is None and model.board_temp(bare) is None
+
+
+def test_fixed_server_temperatures_ignore_an_unconnected_input(fixture):
+    """A board that wires SYSTIN nowhere reports 0 °C, not a temperature."""
+    sections = collect.split_output(fixture("full_output.txt"))
+    sections["sensors"] = "nct6798\tnct6775.656\ttemp1\tSYSTIN\t0\t\t\n"
+    assert model.board_temp(model.build_snapshot(sections, None)) is None

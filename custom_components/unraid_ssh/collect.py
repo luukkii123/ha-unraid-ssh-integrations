@@ -18,7 +18,9 @@ from .const import (
     SECTION_MARKER,
 )
 
-_GPU_QUERY = "index,name,utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw"
+_GPU_QUERY = (
+    "index,name,utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw,fan.speed"
+)
 _DOCKER_FORMAT = (
     '{{.Names}}\\t{{.State}}\\t{{.Image}}\\t'
     '{{.Label "com.docker.compose.project"}}\\t{{.Label "com.docker.compose.service"}}\\t'
@@ -114,6 +116,33 @@ def build_icon_metadata_command(
 
 
 _ICON_METADATA_COMMAND = build_icon_metadata_command()
+#: Every temperature and fan channel the kernel exposes, one tab-separated row
+#: each: chip, device, channel, label, value, pwm, pwm_enable. The mainboard
+#: chip only appears once its driver is loaded (`modprobe nct6775` on this
+#: board) -- the integration reads what is there and loads nothing itself.
+#:
+#: No `exit` anywhere in here, unlike `_STACKS_LOOP`: a single channel that
+#: answers EIO -- which some Super-I/O chips do for unconnected inputs -- would
+#: otherwise fail the whole section and take every other channel with it. A
+#: channel that cannot be read is skipped instead, and the parser drops the
+#: empty row.
+_SENSORS_LOOP = (
+    'for h in /sys/class/hwmon/hwmon*/; do '
+    'n=$(cat "$h/name" 2>/dev/null) || continue; '
+    'd=$(basename "$(readlink -f "$h/device" 2>/dev/null)" 2>/dev/null); '
+    'for f in "$h"temp*_input "$h"fan*_input; do '
+    '[ -e "$f" ] || continue; '
+    'c=$(basename "$f" _input); '
+    'v=$(cat "$f" 2>/dev/null) || continue; '
+    'l=$(cat "${f%_input}_label" 2>/dev/null); '
+    'p=; e=; '
+    'case $c in fan*) i=${c#fan}; '
+    'p=$(cat "$h/pwm$i" 2>/dev/null); e=$(cat "$h/pwm${i}_enable" 2>/dev/null);; esac; '
+    "printf '%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\n' "
+    '"$n" "$d" "$c" "$l" "$v" "$p" "$e"; '
+    'done; '
+    'done'
+)
 _STACKS_LOOP = (
     f'for d in {COMPOSE_PROJECTS_DIR}/*/; do '
     '[ -d "$d" ] || continue; '
@@ -132,6 +161,7 @@ SECTIONS: tuple[tuple[str, str], ...] = (
     ("mem", "grep -E '^(MemTotal|MemAvailable):' /proc/meminfo"),
     ("load", "cat /proc/loadavg /proc/uptime"),
     ("gpu", f"nvidia-smi --query-gpu={_GPU_QUERY} --format=csv,noheader,nounits"),
+    ("sensors", _SENSORS_LOOP),
     ("docker", f"docker ps -a --format '{_DOCKER_FORMAT}'"),
     ("icons", _ICON_METADATA_COMMAND),
     ("compose", "docker compose ls -a --format json"),

@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 import re
+from typing import Final
 
 _KV_RE = re.compile(r'^([A-Za-z0-9_.\-]+)="?(.*?)"?$')
 _SECTION_RE = re.compile(r'^\["?([^"\]]+)"?\]$')
@@ -248,6 +249,7 @@ class Gpu:
     vram_percent: float
     temp: int
     power_w: float
+    fan_percent: int | None = None     # None: no fan, or nvidia-smi answered [N/A]
 
 
 def _float(value: str, default: float = 0.0) -> float:
@@ -258,13 +260,21 @@ def _float(value: str, default: float = 0.0) -> float:
 
 
 def parse_gpus(text: str) -> list[Gpu]:
-    """`index, name, util, mem.used, mem.total, temp, power` — one line per GPU."""
+    """`index, name, util, mem.used, mem.total, temp, power[, fan]` per GPU.
+
+    Seven and eight columns both parse. The eighth (`fan.speed`, already a
+    percentage) was added in 0.3.0, and a card without a controllable fan --
+    every passively cooled or externally regulated one -- answers `[N/A]`
+    there. That is an answer, not a failure: the column becomes `None` and no
+    fan entity is created, while the other seven values stay usable.
+    """
     gpus: list[Gpu] = []
     for line in text.splitlines():
         parts = [p.strip() for p in line.split(",")]
-        if len(parts) != 7 or not parts[0].isdigit():
+        if len(parts) not in (7, 8) or not parts[0].isdigit():
             continue                       # "No devices were found" and the like
         used, total = _int(parts[3]), _int(parts[4])
+        fan = parts[7] if len(parts) == 8 else ""
         gpus.append(
             Gpu(
                 index=int(parts[0]),
@@ -275,9 +285,98 @@ def parse_gpus(text: str) -> list[Gpu]:
                 vram_percent=round(used / total * 100, 1) if total > 0 else 0.0,
                 temp=_int(parts[5]),
                 power_w=_float(parts[6]),
+                fan_percent=int(fan) if fan.isdigit() else None,
             )
         )
     return gpus
+
+
+# --- /sys/class/hwmon (tab separated) ---------------------------------------------
+
+#: Everything a hwmon channel key may contain. hwmon numbers (`hwmon3`) are
+#: deliberately not part of any key: the kernel hands them out in probe order,
+#: so the same chip is `hwmon1` today and `hwmon4` after the next boot -- and
+#: every entity keyed on one would change its identity with it.
+_SENSOR_KEY_CHARS = re.compile(r"[^a-z0-9_]+")
+
+#: Temperatures outside this range are unconnected inputs, not measurements:
+#: this board reports -59 °C on `AUXTIN2` and 0 °C on its four `PCH_*`
+#: channels, none of which exist in hardware.
+TEMP_MIN_CELSIUS: Final = 1.0
+TEMP_MAX_CELSIUS: Final = 150.0
+
+
+@dataclass(frozen=True)
+class HwSensor:
+    chip: str                  # hwmon `name`, e.g. k10temp / nct6798 / nvme
+    device: str                # basename of the `device` link, e.g. 0000:00:18.3
+    channel: str               # tempN / fanN, without the `_input` suffix
+    label: str                 # tempN_label if the chip has one, else ""
+    kind: str                  # "temp" or "fan"
+    value: float | int         # °C for temp, RPM for fan
+    pwm: int | None            # 0-255 drive level, fans only
+    pwm_enable: int | None     # 5 = automatic curve, 1 = manual
+
+
+def sensor_chip_key(sensor: HwSensor) -> str:
+    """Chip name plus device basename, sanitized -- the stable half of a key.
+
+    The chip name alone would collide the moment a second NVMe drive shows up:
+    both report as `nvme`, and the two `temp1` channels would fight over one
+    entity. The device basename is unique per chip instance and survives a
+    reboot, which the hwmon number does not.
+    """
+    parts = [_SENSOR_KEY_CHARS.sub("_", part.lower()).strip("_") for part in (sensor.chip, sensor.device)]
+    return "_".join(part for part in parts if part)
+
+
+def sensor_key(sensor: HwSensor) -> str:
+    """The identity of one channel: chip key plus channel name."""
+    return f"{sensor_chip_key(sensor)}_{sensor.channel}"
+
+
+def temp_plausible(value: float | int | None) -> bool:
+    return value is not None and TEMP_MIN_CELSIUS <= value <= TEMP_MAX_CELSIUS
+
+
+def _optional_int(value: str) -> int | None:
+    return int(value) if value.lstrip("-").isdigit() else None
+
+
+def parse_sensors(text: str) -> list[HwSensor]:
+    """`chip \t device \t channel \t label \t value \t pwm \t pwm_enable`.
+
+    Seven columns per line, written by the shell loop in `collect`. A channel
+    the kernel refuses to read (EIO on some Super-I/O chips) arrives with an
+    empty value column, and a chip that answers with something other than a
+    number arrives as text; both are skipped, because a section that raised
+    here would cost every other channel as well.
+    """
+    out: list[HwSensor] = []
+    for line in text.splitlines():
+        parts = line.split("\t")
+        if len(parts) != 7:
+            continue
+        chip, device, channel, label, raw, pwm, enable = (part.strip() for part in parts)
+        kind = "temp" if channel.startswith("temp") else "fan" if channel.startswith("fan") else ""
+        value = _optional_int(raw)
+        if not chip or not channel or not kind or value is None:
+            continue
+        out.append(
+            HwSensor(
+                chip=chip,
+                device=device,
+                channel=channel,
+                label=label,
+                kind=kind,
+                # Millidegrees from the kernel; one decimal is what the chips
+                # actually resolve (0.5 °C steps on this board).
+                value=round(value / 1000, 1) if kind == "temp" else value,
+                pwm=_optional_int(pwm),
+                pwm_enable=_optional_int(enable),
+            )
+        )
+    return out
 
 
 # --- docker ps (tab separated) ----------------------------------------------------

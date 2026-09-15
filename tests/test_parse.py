@@ -115,9 +115,98 @@ def test_parse_gpus(fixture):
     assert gpu.temp > 0 and gpu.power_w > 0
 
 
+def test_parse_gpus_reads_the_fan_percentage(fixture):
+    assert parse.parse_gpus(fixture("gpu.csv"))[0].fan_percent == 31
+
+
+def test_parse_gpus_accepts_seven_columns_without_a_fan(fixture):
+    """A recording from before the fan column existed must still parse."""
+    gpu = parse.parse_gpus(fixture("gpu_legacy.csv"))[0]
+    assert gpu.fan_percent is None
+    assert (gpu.temp, gpu.power_w) == (52, 79.86)
+
+
+def test_parse_gpus_treats_not_available_as_no_fan(fixture):
+    gpu = parse.parse_gpus(fixture("gpu_no_fan.csv"))[0]
+    assert gpu.fan_percent is None
+    assert gpu.temp == 52                    # the other columns survive
+
+
 def test_parse_gpus_empty():
     assert parse.parse_gpus("") == []
     assert parse.parse_gpus("No devices were found\n") == []
+
+
+# --- /sys/class/hwmon ----------------------------------------------------------
+
+
+def test_parse_sensors_reads_every_channel(fixture):
+    sensors = parse.parse_sensors(fixture("sensors.tsv"))
+    temps = [s for s in sensors if s.kind == "temp"]
+    fans = [s for s in sensors if s.kind == "fan"]
+    assert len(temps) == 20                  # 4 NVMe + 3 k10temp + 13 nct6798
+    assert len(fans) == 7
+    assert {s.chip for s in sensors} == {"nvme", "k10temp", "nct6798"}
+
+
+def test_parse_sensors_converts_millidegrees(fixture):
+    sensors = parse.parse_sensors(fixture("sensors.tsv"))
+    tctl = next(s for s in sensors if s.chip == "k10temp" and s.label == "Tctl")
+    assert tctl.value == 71.8 and tctl.pwm is None
+    unconnected = next(s for s in sensors if s.label == "AUXTIN2")
+    assert unconnected.value == -59.0        # kept, and rejected later by range
+
+
+def test_parse_sensors_carries_pwm_only_where_the_chip_has_one(fixture):
+    sensors = {s.channel: s for s in parse.parse_sensors(fixture("sensors.tsv")) if s.kind == "fan"}
+    assert (sensors["fan4"].value, sensors["fan4"].pwm, sensors["fan4"].pwm_enable) == (874, 229, 5)
+    assert (sensors["fan6"].value, sensors["fan6"].pwm, sensors["fan6"].pwm_enable) == (3409, 255, 5)
+    assert sensors["fan5"].pwm_enable == 1   # manual, not the automatic curve
+    assert sensors["fan7"].pwm is None and sensors["fan7"].pwm_enable is None
+
+
+def test_parse_sensors_skips_unreadable_and_non_numeric_rows(fixture):
+    channels = {s.channel for s in parse.parse_sensors(fixture("sensors.tsv"))}
+    assert "temp14" not in channels          # empty value column (EIO)
+    assert "fan8" not in channels            # chip answered with text
+
+
+def test_parse_sensors_skips_rows_with_the_wrong_column_count():
+    assert parse.parse_sensors("nvme\tnvme0\ttemp1\tComposite\t51850\n") == []
+    assert parse.parse_sensors("") == []
+
+
+def test_sensor_keys_are_stable_and_unique(fixture):
+    sensors = parse.parse_sensors(fixture("sensors.tsv"))
+    keys = [parse.sensor_key(s) for s in sensors]
+    assert len(keys) == len(set(keys))
+    assert not any("hwmon" in key for key in keys)
+    assert all(key == key.lower() and key.replace("_", "").isalnum() for key in keys)
+    assert "k10temp_0000_00_18_3_temp1" in keys
+    assert "nct6798_nct6775_656_temp1" in keys
+    assert "nvme_nvme0_temp1" in keys
+
+
+def test_sensor_keys_separate_two_drives_of_the_same_chip():
+    """Two NVMe drives both call themselves `nvme` and both have `temp1`."""
+    rows = "nvme\tnvme0\ttemp1\tComposite\t51850\t\t\nnvme\tnvme1\ttemp1\tComposite\t44850\t\t\n"
+    first, second = parse.parse_sensors(rows)
+    assert parse.sensor_key(first) != parse.sensor_key(second)
+    assert (parse.sensor_key(first), parse.sensor_key(second)) == ("nvme_nvme0_temp1", "nvme_nvme1_temp1")
+
+
+def test_sensor_key_survives_a_chip_without_a_device_link():
+    """`acpitz` has no `device` symlink; the key is then the chip name alone."""
+    sensor, = parse.parse_sensors("acpitz\t\ttemp1\t\t42000\t\t\n")
+    assert parse.sensor_key(sensor) == "acpitz_temp1"
+
+
+def test_temp_plausible_rejects_unconnected_inputs():
+    assert parse.temp_plausible(43.0) and parse.temp_plausible(1.0) and parse.temp_plausible(150.0)
+    assert not parse.temp_plausible(-59.0)
+    assert not parse.temp_plausible(0.0)
+    assert not parse.temp_plausible(151.0)
+    assert not parse.temp_plausible(None)
 
 
 def test_parse_containers(fixture):

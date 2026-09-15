@@ -8,13 +8,13 @@ import subprocess
 
 import pytest
 
-from unraid_ssh import collect
+from unraid_ssh import collect, parse
 
 
 def test_state_command_contains_every_section_in_order():
     cmd = collect.build_state_command()
     names = [name for name, _ in collect.SECTIONS]
-    assert names == ["var", "disks", "shares", "stat", "mem", "load", "gpu", "docker", "icons", "compose", "stacks", "vms"]
+    assert names == ["var", "disks", "shares", "stat", "mem", "load", "gpu", "sensors", "docker", "icons", "compose", "stacks", "vms"]
     positions = [cmd.index(f"echo '@@@ {name}'") for name in names]
     assert positions == sorted(positions)
     assert cmd.rstrip().endswith("echo '@@@ end'")
@@ -29,6 +29,50 @@ def test_state_command_uses_the_recorded_shapes():
     assert '{{json (.Label "net.unraid.docker.icon")}}' in cmd
     assert "docker compose ls -a --format json" in cmd
     assert "virsh list --all" in cmd
+
+
+def test_sensors_loop_survives_an_unreadable_channel(tmp_path):
+    """One EIO channel must cost its own row, not the whole section.
+
+    Built from a fake `/sys/class/hwmon` tree: two chips, a label, a fan with
+    pwm, a fan without one, and a channel whose read fails. Whatever a real
+    Super-I/O chip does, the section has to come back with a zero status.
+    """
+    root = tmp_path / "hwmon"
+    board, drive = root / "hwmon2", root / "hwmon5"
+    for path, name in ((board, "nct6798"), (drive, "nvme")):
+        path.mkdir(parents=True)
+        (path / "name").write_text(name + "\n")
+    (board / "device").symlink_to(tmp_path / "nct6775.656")
+    (tmp_path / "nct6775.656").mkdir()
+    (board / "temp1_input").write_text("43000\n")
+    (board / "temp1_label").write_text("SYSTIN\n")
+    (board / "fan4_input").write_text("874\n")
+    (board / "pwm4").write_text("229\n")
+    (board / "pwm4_enable").write_text("5\n")
+    (board / "fan7_input").write_text("0\n")
+    (drive / "device").symlink_to(tmp_path / "nvme0")
+    (tmp_path / "nvme0").mkdir()
+    (drive / "temp1_input").write_text("51850\n")
+    (drive / "temp1_label").write_text("Composite\n")
+    # A read that fails where the file exists. A real chip answers EIO here;
+    # a directory is the one way to provoke the same shape as an unprivileged
+    # user and as root, which is what the test image runs as.
+    (drive / "temp2_input").mkdir()
+
+    command = dict(collect.SECTIONS)["sensors"].replace("/sys/class/hwmon/hwmon*/", f"{root}/hwmon*/")
+    monkey = subprocess.run(["/bin/sh", "-c", collect._build_sections((("sensors", command),))],
+                            capture_output=True, text=True, check=True)
+    sections = collect.split_output(monkey.stdout + "@@@ end\n")
+    assert "sensors" in sections                      # zero status despite the EIO row
+    sensors = parse.parse_sensors(sections["sensors"])
+    assert {(s.chip, s.channel) for s in sensors} == {
+        ("nct6798", "temp1"), ("nct6798", "fan4"), ("nct6798", "fan7"), ("nvme", "temp1"),
+    }
+    board_fan = next(s for s in sensors if s.channel == "fan4")
+    assert (board_fan.value, board_fan.pwm, board_fan.pwm_enable) == (874, 229, 5)
+    assert next(s for s in sensors if s.channel == "fan7").pwm is None
+    assert {parse.sensor_chip_key(s) for s in sensors} == {"nct6798_nct6775_656", "nvme_nvme0"}
 
 
 def test_icon_metadata_command_is_one_fixed_quoted_php_program():
