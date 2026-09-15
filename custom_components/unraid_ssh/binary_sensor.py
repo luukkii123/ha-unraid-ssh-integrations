@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
+from functools import partial
 from typing import Any
 
 from homeassistant.components.binary_sensor import (
@@ -47,17 +48,25 @@ class UnraidBinarySensor(UnraidEntity, BinarySensorEntity):
         return None if item is None else self.entity_description.is_on_fn(item)
 
 
+def _plan(coordinator: UnraidCoordinator, snapshot: Snapshot) -> Iterator[tuple[str, Callable[[], Any]]]:
+    """One walk for both the platform and the orphan cleanup -- see `sensor._plan`."""
+    server = server_device(coordinator)
+    for desc in SERVER:
+        yield desc.key, partial(UnraidBinarySensor, coordinator, desc, server, desc.key)
+    for disk in snapshot.disks:
+        device = disk_device(coordinator, disk)
+        for desc in DISK:
+            key = f"{desc.key}_{disk.name}"
+            yield key, partial(UnraidBinarySensor, coordinator, desc, device, key, disk.name, find_disk)
+
+
+def expected_keys(coordinator: UnraidCoordinator, snapshot: Snapshot) -> set[str]:
+    return {key for key, _ in _plan(coordinator, snapshot)}
+
+
 def _build(coordinator: UnraidCoordinator) -> Callable[[Snapshot], dict[str, UnraidBinarySensor]]:
     def build(snapshot: Snapshot) -> dict[str, UnraidBinarySensor]:
-        out: dict[str, UnraidBinarySensor] = {}
-        server = server_device(coordinator)
-        for desc in SERVER:
-            out[desc.key] = UnraidBinarySensor(coordinator, desc, server, desc.key)
-        for disk in snapshot.disks:
-            for desc in DISK:
-                key = f"{desc.key}_{disk.name}"
-                out[key] = UnraidBinarySensor(coordinator, desc, disk_device(coordinator, disk), key, disk.name, find_disk)
-        return out
+        return {key: make() for key, make in _plan(coordinator, snapshot)}
 
     return build
 

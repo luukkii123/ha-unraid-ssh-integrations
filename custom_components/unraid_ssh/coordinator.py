@@ -61,6 +61,10 @@ class UnraidRuntime:
     icons: "ContainerIconCache"
     server_device_id: str | None = None
     device_infos: dict[str, dict[str, Any]] = field(default_factory=dict)
+    #: Unique id -> the first successful poll that did not expect it any more.
+    #: Deliberately not in the registry: a restart costs one grace period, and
+    #: a persisted clock would have to be migrated and cleaned up forever.
+    stale_since: dict[str, datetime] = field(default_factory=dict)
 
 
 def setting(entry: ConfigEntry, key: str, default: Any) -> Any:

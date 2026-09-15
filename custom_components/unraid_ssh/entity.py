@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from functools import partial
 from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass
@@ -243,6 +244,12 @@ def track_new(
         fresh = {key: entity for key, entity in build(coordinator.data).items() if key not in known}
         if fresh:
             known.update(fresh)
+            for key, entity in fresh.items():
+                # Without this the set would remember a key forever: a
+                # container that comes back after the cleanup removed it would
+                # be filtered out here and never get its entity again, even
+                # though its unique id is free.
+                entity.async_on_remove(partial(known.discard, key))
             async_add_entities(list(fresh.values()))
 
     _sync()

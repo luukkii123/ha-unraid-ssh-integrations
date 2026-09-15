@@ -13,6 +13,7 @@ import logging
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryError
+from homeassistant.helpers.device_registry import DeviceEntry
 from homeassistant.helpers.translation import async_get_translations
 
 from .const import DOMAIN
@@ -25,6 +26,7 @@ from .coordinator import (
 )
 from .icon_cache import ContainerIconCache, async_remove_icon_files, async_setup_icon_http
 from .migration import async_reconcile_devices
+from .prune import async_prune_stale, can_remove_device
 from .ssh import SSHKeyError
 
 _LOGGER = logging.getLogger(__name__)
@@ -64,7 +66,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: UnraidConfigEntry) -> bo
     # Direct device creation precedes platform translation loading.
     await async_get_translations(hass, hass.config.language, "device", {DOMAIN})
     async_reconcile_devices(hass, entry)
-    entry.async_on_unload(coordinator.async_add_listener(lambda: async_reconcile_devices(hass, entry)))
+
+    def reconcile() -> None:
+        # Order matters: migration first decides where every entity belongs,
+        # then the cleanup decides whether it should still exist. The other way
+        # round, a device emptied by the cleanup would be recreated at once.
+        async_reconcile_devices(hass, entry)
+        async_prune_stale(hass, entry)
+
+    entry.async_on_unload(coordinator.async_add_listener(reconcile))
 
     def schedule_icons() -> None:
         if coordinator.last_update_success and coordinator.data is not None:
@@ -82,6 +92,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: UnraidConfigEntry) -> bo
     entry.async_create_background_task(hass, updates.async_refresh(), "unraid_ssh first update check")
     entry.async_on_unload(entry.add_update_listener(_async_reload))
     return True
+
+
+async def async_remove_config_entry_device(
+    hass: HomeAssistant, entry: UnraidConfigEntry, device: DeviceEntry
+) -> bool:
+    """Let the user delete a device the server no longer accounts for.
+
+    Home Assistant only offers the delete button on an integration that
+    defines this, so without it the only way out of a stale device is the five
+    minute grace period -- or removing the whole entry.
+    """
+    return can_remove_device(entry, device)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: UnraidConfigEntry) -> bool:
