@@ -214,9 +214,15 @@ Geräteübersicht in Deutsch/Englisch, 320/480/960 px und hell/dunkel.
 Cachebilder laden bei gesperrtem externem Bildserver weiter; URL-Fallbacks
 sind dann erwartungsgemäß nicht verfügbar.
 
-Dies ist kein Nachweis einer produktiven Migration oder eines produktiven
-Schaltvorgangs mit 0.3.0. Insbesondere ist die Entfernung der verwaisten
-Entitäten am echten System noch nicht beobachtet worden, und die neuen
-Temperatur- und Lüfterwerte sind noch nicht gegen `sensors` auf dem Server
-gegengeprüft. Veröffentlichung und HACS-Installation einschließlich
-Prüfung der tatsächlich installierten Version folgen getrennt.
+Am **15.09.2026** ist `0.3.0` (Commit `1f45b2f`, GitHub-Lauf `34940711248`
+grün) über HACS als Version `main` installiert und nach einem HA-Neustart
+am echten System geprüft: 15 Temperatur-, 13 Lüfter- und drei feste Kanäle
+sind angelegt, die eingeschalteten Werte decken sich mit `/sys/class/hwmon`
+und `nvidia-smi` auf dem Server (Tctl 73,2 °C, SYSTIN 43,0 °C, CPUTIN
+57,5 °C, NVMe 52,9 °C, Lüfter 4 bei 889 RPM / 92 %, GPU-Lüfter 31 %;
+Lüfter 6 schwankt zwischen 3400 und 5900 RPM, beide Seiten lesen denselben
+Kanal). Das Aufräumen hat nach der Karenz 193 nicht verfügbare Entitäten
+entfernt, darunter Schalter längst gelöschter Test-Container; alle 44 zu
+dem Zeitpunkt eingeschalteten Schalter behielten ihre Entity-ID, das
+Systemprotokoll blieb ohne Eintrag von `unraid_ssh`. Ein Stack-Schalter
+oder Update-Install ist mit 0.3.0 weiterhin nicht produktiv ausgelöst worden.
