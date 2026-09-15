@@ -83,7 +83,7 @@ def _preserve_failed_device(entity: Entity, coordinator: UnraidCoordinator, info
     suffix = entity.unique_id.removeprefix(coordinator.entry.entry_id + "_")
     section = next((section for prefixes, section in (
         (("container_", "update_"), "docker"),
-        (("gpu_util_", "gpu_vram_", "gpu_temp_", "gpu_power_"), "gpu"),
+        (("gpu_util_", "gpu_vram_", "gpu_temp_", "gpu_power_", "gpu_fan_"), "gpu"),
         (("share_used_", "share_free_"), "shares"),
     ) if suffix.startswith(prefixes)), None)
     if snapshot is None or entity.hass is None:

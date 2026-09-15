@@ -86,7 +86,7 @@ def async_reconcile_devices(hass: HomeAssistant, entry: UnraidConfigEntry) -> No
                 ensure(stack_device(coordinator, stack))
     if "gpu" not in snapshot.failed:
         for gpu in snapshot.gpus:
-            for metric in ("util", "vram", "temp", "power"):
+            for metric in ("util", "vram", "temp", "power", "fan"):
                 target("sensor", f"gpu_{metric}_{gpu.index}", runtime.server_device_id)
             suffix = f"gpu_{gpu.index}"
             if (device := by_identifier.get((DOMAIN, entry.entry_id + "_" + suffix))) and owned_legacy(device, suffix):
