@@ -13,11 +13,36 @@ Compose-Stacks und verliert nach Updates die VMs. SSH ist immer da.
 | Bereich | Inhalt |
 | --- | --- |
 | Server | CPU, RAM, Load, Uptime, Array-Status, Parity, Mover, je GPU, je Platte, je Share |
+| Temperaturen | Je Kanal aus `/sys/class/hwmon` ein Sensor — CPU, Mainboard, NVMe —, dazu die beiden festen Sensoren **CPU-Temperatur** und **Mainboard-Temperatur**, deren ID sich auch bei einem Hardwaretausch nicht ändert |
+| Lüfter | Je Lüfter **Drehzahl** in RPM und **Leistung** in Prozent (aus `pwm`, 0–255); beim GPU-Lüfter kommen die Prozent direkt von `nvidia-smi`. Nur Anzeige — die Integration schreibt nie nach `pwm` |
 | Schalter | Docker-Container, Compose-Stacks (über das Compose-Manager-Plugin) und VMs — je Container, Stack oder VM ein/aus |
 | Updates | `update`-Entität je Container mit Registry-Digest, mit „Installieren" — auch für Compose-Container, die Unraids eigene Prüfung nicht sieht; dazu ein Zähler und ein Knopf „Jetzt prüfen" |
 
-Diese Fassung bereitet **0.2.0** vor. Der bisher veröffentlichte Stand ist
+Diese Fassung bereitet **0.3.0** vor. Der bisher veröffentlichte Stand ist
 **0.1.0**; HACS installiert Releases, nicht automatisch den Entwicklungszweig.
+
+### Mainboard-Temperaturen brauchen einen Treiber
+
+CPU-Kern und NVMe melden sich von selbst. Der **Super-I/O-Chip des
+Mainboards** — und damit SYSTIN, CPUTIN und alle Gehäuselüfter — erscheint
+erst, wenn sein Treiber geladen ist; Unraid lädt ihn nicht von allein. Entweder
+das Plugin **Dynamix System Temperature** installieren und den Chip dort
+auswählen, oder den Treiber selbst laden und den Aufruf in `/boot/config/go`
+verankern, damit er den Neustart überlebt:
+
+```sh
+modprobe nct6775        # ASUS/Gigabyte/MSI mit Nuvoton; ältere Boards: it87, w83627ehf
+```
+
+Ohne diesen Schritt fehlen die betreffenden Entitäten schlicht — die
+Integration lädt selbst keine Treiber und meldet keinen Fehler.
+
+Angelegt wird jeder Kanal, den der Kernel zeigt; **eingeschaltet** sind nur die
+aussagekräftigen (`Tctl`/`Tdie`/`Package id 0`, `SYSTIN`, `CPUTIN`, NVMe
+`Composite`, drehende Lüfter). Die übrigen stehen in Einstellungen → Geräte &
+Dienste → Entitäten und lassen sich einzeln aktivieren. Kanäle, deren erster
+Messwert außerhalb von 1–150 °C liegt, sind unbelegte Eingänge (dieses Board
+meldet −59 °C und viermal 0 °C) und bekommen gar keine Entität.
 
 ## Installation
 
@@ -52,9 +77,37 @@ Löschen), dann auf Unraid die Zeile mit `unraid_ssh@homeassistant` aus
 
 Je Abfrage eine SSH-Verbindung mit **einem** Befehlsstrang: `var.ini`,
 `disks.ini`, `shares.ini`, `/proc/stat`, `/proc/meminfo`, `nvidia-smi`,
-`docker ps`, `docker compose ls`, die Projektordner des Compose-Managers,
-`virsh list`. Die Auswertung passiert in Home Assistant. Auf Unraid liegt
-nichts; ein Neustart löscht nichts.
+`/sys/class/hwmon`, `docker ps`, `docker compose ls`, die Projektordner des
+Compose-Managers, `virsh list`. Die Auswertung passiert in Home Assistant. Auf
+Unraid liegt nichts; ein Neustart löscht nichts.
+
+## Aufräumen: verwaiste Entitäten ab 0.3.0
+
+Bis 0.2.0 hat die Integration **nie** eine Entität entfernt. Das war auf Dauer
+unhaltbar: Playwright- und Build-Container mit Docker-Zufallsnamen hinterließen
+hunderte Schalter auf `unavailable`.
+
+Seit 0.3.0 entfernt sie eine Entität, deren Gegenstück auf dem Server
+verschwunden ist — aber erst nach **fünf Minuten** durchgehend erfolgreicher
+Abfragen ohne Wiederauftauchen. Diese Karenz ist kein Zögern: `compose up` und
+Unraids `update_container` reißen einen Container für Sekunden ab und legen ihn
+neu an, und ohne das Fenster verlöre die Entität dabei ihren Bereich, ihren
+Namen und ihre Labels. Taucht sie vorher wieder auf, passiert nichts.
+
+Drei Dinge schützen zusätzlich:
+
+- **Eine fehlgeschlagene Abfrage zählt nicht.** Kann `docker ps` nicht gelesen
+  werden, wird über Container gar nicht geurteilt — die Uhr läuft weder los
+  noch zurück.
+- **Ein heruntergefahrener Stack ist nicht verwaist.** Solange sein Ordner im
+  Compose-Manager existiert, bleiben sein Gerät und seine Schalter.
+- **Server-Entitäten und das Server-Gerät bleiben immer.**
+
+Ein Gerät, das danach keine Entität mehr hat, wird mit entfernt; das Sammelgerät
+`<Präfix> Freie Container` entsteht neu, sobald wieder ein freier Container da
+ist. Wer nicht warten will, löscht ein Gerät direkt über die Geräteseite —
+das bietet Home Assistant genau dann an, wenn die aktuelle Abfrage es nicht
+mehr kennt.
 
 ## Was sie bewusst nicht kann
 
@@ -72,6 +125,13 @@ nichts; ein Neustart löscht nichts.
   der Stack keine Container mehr, verschwände aus der Abfrage und käme nie
   zurück. Was bleibt, ist das Gerät des Stacks samt seinen Anzeigen — und der
   eigene Schalter jedes einzelnen Containers.
+- **Lüfter steuern kann sie nicht.** Sie liest `pwm`, sie schreibt nie dorthin.
+  Die Regelung bleibt beim Mainboard bzw. bei dem Plugin, das sie übernommen
+  hat; das Attribut `pwm_mode` sagt nur, ob gerade eine automatische Kurve
+  (`auto`) oder ein fester Wert (`manual`) gilt.
+- **Temperaturen kommen ungefiltert aus `hwmon`.** Welcher Kanal wo im Gehäuse
+  sitzt, weiß nur das Mainboard-Handbuch; die Integration erfindet keine
+  Zuordnung und nennt jeden Kanal so, wie der Chip ihn nennt.
 
 ## Geräte und Namen ab 0.2.0
 
@@ -132,7 +192,7 @@ Entitätenkarte den Namen der jeweiligen Zeile setzen). Entitätsnamen und IDs
 müssen dafür nicht geändert werden. Auch HAs Gerätedetail zeigt kurze
 Entitätsnamen.
 
-## Geprüft am 14.09.2026
+## Geprüft am 15.09.2026
 
 Die nachbaubare Versionsmatrix und Resolverstrategie stehen in
 [`tests_ha/README.md`](tests_ha/README.md). Getestet werden **HA Core 2026.7.0
@@ -144,7 +204,10 @@ APT-Pakete und nicht separat gepinnte transitive Abhängigkeiten sind beweglich;
 die Befehle garantieren daher keine bitgleichen Testumgebungen.
 
 Die Abnahme umfasst reine Parser-/Befehls-/Transporttests, echte HA-Plattformen,
-Registry-Migration, Reload, Cache-Lebenszyklus und HTTP-Bilder. Der isolierte
+Registry-Migration, Reload, Cache-Lebenszyklus und HTTP-Bilder; für 0.3.0 dazu
+die hwmon-Kanäle gegen eine Aufzeichnung dieses Servers, die Sensor- und
+Lüfterentitäten in einem echten Home Assistant und das Aufräumen verwaister
+Entitäten samt Karenzfenster (176 reine und 103 HA-Tests je Matrixversion). Der isolierte
 Browserlauf verwendet das echte Frontend von **2026.9.2** mit synthetischen
 Daten: Standard-Entitäten-/Tile-Karten, vorhandene Busch-Gerätekarte und
 Geräteübersicht in Deutsch/Englisch, 320/480/960 px und hell/dunkel.
@@ -152,5 +215,8 @@ Cachebilder laden bei gesperrtem externem Bildserver weiter; URL-Fallbacks
 sind dann erwartungsgemäß nicht verfügbar.
 
 Dies ist kein Nachweis einer produktiven Migration oder eines produktiven
-Schaltvorgangs mit 0.2.0. Veröffentlichung und HACS-Installation einschließlich
+Schaltvorgangs mit 0.3.0. Insbesondere ist die Entfernung der verwaisten
+Entitäten am echten System noch nicht beobachtet worden, und die neuen
+Temperatur- und Lüfterwerte sind noch nicht gegen `sensors` auf dem Server
+gegengeprüft. Veröffentlichung und HACS-Installation einschließlich
 Prüfung der tatsächlich installierten Version folgen getrennt.

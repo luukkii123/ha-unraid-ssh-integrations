@@ -122,6 +122,8 @@ def async_reconcile_devices(hass: HomeAssistant, entry: UnraidConfigEntry) -> No
         entities.async_update_entity(entity.entity_id, **changes)
 
     for device_id in cleanup:
-        # Include disabled entries and other integrations; never remove entities.
+        # Include disabled entries and other integrations. The migration itself
+        # never removes an entity; that is `prune.async_prune_stale`, which runs
+        # right after it and only after its own grace period.
         if not er.async_entries_for_device(entities, device_id, include_disabled_entities=True):
             devices.async_remove_device(device_id)
