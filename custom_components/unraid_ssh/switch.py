@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
+from functools import partial
 from typing import Any
 
 from homeassistant.components.switch import SwitchEntity, SwitchEntityDescription
@@ -98,32 +99,58 @@ class ContainerSwitch(ContainerPictureMixin, UnraidSwitch):
         )
 
 
+Planned = tuple[str, Callable[[], UnraidSwitch] | None]
+
+
+def _plan_container(coordinator: UnraidCoordinator, container: Container) -> Iterator[Planned]:
+    """A container's switch, or its key alone while its device is uncertain.
+
+    `can_register_container` withholds a brand-new switch while the stack
+    metadata is missing, and that is exactly the moment the key must still
+    count as expected: the container is demonstrably there, only its device is
+    not yet decidable.
+    """
+    key = f"container_{container.name}"
+    make = partial(ContainerSwitch, coordinator, container)
+    yield key, make if can_register_container(coordinator, container, "switch") else None
+
+
+def _plan(coordinator: UnraidCoordinator, snapshot: Snapshot) -> Iterator[Planned]:
+    """One walk for both the platform and the orphan cleanup -- see `sensor._plan`."""
+    readable = not {"docker", "compose", "stacks"} & snapshot.failed
+    for stack in snapshot.stacks:
+        device = stack_device(coordinator, stack)
+        # Unique id, device and lookup all on the stable key: `stack.name`
+        # changes when the stack goes down, and an entity that changes its
+        # unique id leaves the old one behind as a dead entity in every
+        # automation that used it -- while one that still looks itself up by
+        # the old name would go unavailable exactly when someone wants to
+        # switch it on.
+        key = stack_key(stack)
+        make = partial(
+            UnraidSwitch, coordinator, STACK, device, f"stack_{key}", key, find_stack_by_key,
+            use_device_name=True,
+        )
+        # A stack without a compose file gets no switch (`stack_switchable`),
+        # but it exists, so its key stays expected: a stack that is merely down
+        # is not an orphan.
+        yield f"stack_{key}", make if readable and stack_switchable(stack) else None
+        for container in stack.containers:
+            yield from _plan_container(coordinator, container)
+    for container in snapshot.template_containers:
+        yield from _plan_container(coordinator, container)
+    for vm in snapshot.vms:
+        key = f"vm_{vm.name}"
+        yield key, partial(UnraidSwitch, coordinator, VM, vm_device(coordinator, vm), key, vm.name, find_vm)
+
+
+def expected_keys(coordinator: UnraidCoordinator, snapshot: Snapshot) -> set[str]:
+    return {key for key, _ in _plan(coordinator, snapshot)}
+
+
 def _build(coordinator: UnraidCoordinator) -> Callable[[Snapshot], dict[str, UnraidSwitch]]:
     def build(snapshot: Snapshot) -> dict[str, UnraidSwitch]:
-        out: dict[str, UnraidSwitch] = {}
-        for stack in snapshot.stacks:
-            device = stack_device(coordinator, stack)
-            if not {"docker", "compose", "stacks"} & snapshot.failed and stack_switchable(stack):
-                # Unique id, device and lookup all on the stable key:
-                # `stack.name` changes when the stack goes down, and an entity
-                # that changes its unique id leaves the old one behind as a
-                # dead entity in every automation that used it -- while one
-                # that still looks itself up by the old name would go
-                # unavailable exactly when someone wants to switch it on.
-                key = stack_key(stack)
-                out[f"stack_{key}"] = UnraidSwitch(
-                    coordinator, STACK, device, f"stack_{key}", key, find_stack_by_key,
-                    use_device_name=True,
-                )
-            for c in stack.containers:
-                if can_register_container(coordinator, c, "switch"):
-                    out[f"container_{c.name}"] = ContainerSwitch(coordinator, c)
-        for c in snapshot.template_containers:
-            if can_register_container(coordinator, c, "switch"):
-                out[f"container_{c.name}"] = ContainerSwitch(coordinator, c)
-        for vm in snapshot.vms:
-            out[f"vm_{vm.name}"] = UnraidSwitch(coordinator, VM, vm_device(coordinator, vm), f"vm_{vm.name}", vm.name, find_vm)
-        return out
+        return {key: make() for key, make in _plan(coordinator, snapshot) if make is not None}
 
     return build
 

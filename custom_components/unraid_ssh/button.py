@@ -13,6 +13,11 @@ from .entity import UnraidEntity, server_device
 CHECK = ButtonEntityDescription(key="check_updates")
 
 
+def expected_keys() -> set[str]:
+    """The one button exists for as long as the entry does."""
+    return {CHECK.key}
+
+
 class CheckUpdatesButton(UnraidEntity, ButtonEntity):
     """Runs the slow update coordinator on demand."""
 

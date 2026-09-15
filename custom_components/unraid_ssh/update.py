@@ -7,7 +7,8 @@ run -- see `model.container_updatable`.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from functools import partial
 from typing import Any
 
 from homeassistant.components.update import (
@@ -24,7 +25,7 @@ from . import actions
 from .const import UPDATE_TIMEOUT
 from .coordinator import UnraidConfigEntry, UnraidCoordinator, UpdateCoordinator, UpdateState
 from .entity import ContainerPictureMixin, can_register_container, device_for_container, track_new
-from .model import ImageStatus, container_updatable, find_container, find_stack
+from .model import ImageStatus, Snapshot, container_updatable, find_container, find_stack
 from .parse import Container
 
 DESCRIPTION = UpdateEntityDescription(key="container_update")
@@ -127,17 +128,36 @@ class ContainerUpdate(ContainerPictureMixin, CoordinatorEntity[UpdateCoordinator
             await self.coordinator.async_request_refresh()
 
 
+def _plan(
+    updates: UpdateCoordinator | None,
+    fast: UnraidCoordinator,
+    snapshot: Snapshot,
+    state: UpdateState | None,
+) -> Iterator[tuple[str, Callable[[], ContainerUpdate] | None]]:
+    """One walk for both the platform and the orphan cleanup.
+
+    Every container of the *fast* snapshot yields its key, whether or not the
+    slow coordinator has a digest for it yet. That first check takes minutes,
+    and treating a container as orphaned in the meantime would delete the very
+    entity the check is about to fill.
+    """
+    for container in snapshot.containers:
+        make = None
+        if state is not None and container.name in state.images and can_register_container(fast, container, "update"):
+            make = partial(ContainerUpdate, updates, fast, container)
+        yield f"update_{container.name}", make
+
+
+def expected_keys(fast: UnraidCoordinator, snapshot: Snapshot) -> set[str]:
+    return {key for key, _ in _plan(None, fast, snapshot, None)}
+
+
 def _build(updates: UpdateCoordinator, fast: UnraidCoordinator) -> Callable[[UpdateState], dict[str, ContainerUpdate]]:
     def build(state: UpdateState) -> dict[str, ContainerUpdate]:
         snapshot = fast.data
         if snapshot is None:
             return {}
-        return {
-            name: ContainerUpdate(updates, fast, container)
-            for name in state.images
-            if (container := find_container(snapshot, name)) is not None
-            and can_register_container(fast, container, "update")
-        }
+        return {key: make() for key, make in _plan(updates, fast, snapshot, state) if make is not None}
 
     return build
 
