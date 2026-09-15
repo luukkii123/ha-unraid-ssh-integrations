@@ -107,3 +107,67 @@ def test_grouped_entity_names_include_the_component_once():
             entity["sensor"]["gpu_util"]["name"],
             entity["update"]["container_update"]["name"],
         ) == names
+
+
+def test_hardware_sensor_keys_are_translated_in_both_languages():
+    """Every new entity needs a name in all three files (docs/ui-regeln.md)."""
+    expected = {
+        "strings.json": {
+            "cpu_temp": "CPU temperature",
+            "board_temp": "Board temperature",
+            "hw_temp": "Temperature {chip} {label}",
+            "fan_rpm": "Fan {label} speed",
+            "fan_percent": "Fan {label} power",
+            "gpu_fan": "GPU {index} {gpu} fan",
+        },
+        "translations/en.json": {
+            "cpu_temp": "CPU temperature",
+            "board_temp": "Board temperature",
+            "hw_temp": "Temperature {chip} {label}",
+            "fan_rpm": "Fan {label} speed",
+            "fan_percent": "Fan {label} power",
+            "gpu_fan": "GPU {index} {gpu} fan",
+        },
+        "translations/de.json": {
+            "cpu_temp": "CPU-Temperatur",
+            "board_temp": "Mainboard-Temperatur",
+            "hw_temp": "Temperatur {chip} {label}",
+            "fan_rpm": "L\u00fcfter {label} Drehzahl",
+            "fan_percent": "L\u00fcfter {label} Leistung",
+            "gpu_fan": "GPU {index} {gpu} L\u00fcfter",
+        },
+    }
+    for filename, names in expected.items():
+        sensor = _load(filename)["entity"]["sensor"]
+        assert {key: sensor[key]["name"] for key in names} == names, filename
+
+
+def test_hardware_sensor_placeholders_match_what_the_platform_supplies():
+    """A placeholder the entity does not fill shows up raw in the entity name.
+
+    Only the shape is checked here -- this suite stays free of Home Assistant.
+    That the platform really supplies these values is measured end to end in
+    `tests_ha/test_hw_sensors.py`, which asserts the rendered entity names.
+    """
+    import re
+
+    supplied = {
+        "hw_temp": {"chip", "label"},
+        "fan_rpm": {"label"},
+        "fan_percent": {"label"},
+        "gpu_fan": {"gpu", "index"},
+        "cpu_temp": set(),
+        "board_temp": set(),
+    }
+    for filename in ("strings.json", "translations/en.json", "translations/de.json"):
+        entity = _load(filename)["entity"]["sensor"]
+        for key, names in supplied.items():
+            assert set(re.findall(r"{(\w+)}", entity[key]["name"])) == names, (filename, key)
+
+
+def test_icons_exist_for_the_new_keys_without_a_device_class():
+    from unraid_ssh import const
+
+    assert const.ENTITY_ICONS["fan_rpm"] == "mdi:fan"
+    assert const.ENTITY_ICONS["fan_percent"] == "mdi:fan"
+    assert const.ENTITY_ICONS["gpu_fan"] == "mdi:fan"

@@ -67,8 +67,9 @@ angesehen werden. Ein Fixture beweist keine produktive Migration oder Schaltung.
 
 ## Ergebnis und Darstellungsgrenzen
 
-Abschlusssuiten: **154 reine Tests** (PHP tatsächlich ausgeführt) und **76 HA-
-Tests je Matrixversion**, ohne übersprungene Tests. Die Browsermatrix umfasst
+Abschlusssuiten: **176 reine Tests** (PHP tatsächlich ausgeführt) und **103 HA-
+Tests je Matrixversion**, ohne übersprungene Tests (Stand 15.09.2026, 0.3.0;
+davor 154 und 76). Die Browsermatrix umfasst
 je Sprache sechs Dashboard- und sechs Geräteübersichtsansichten. Zusätzliche
 Belege zeigen den echten Tile-Editor, kurze Karten-Anzeigenamen auf 320 px,
 Geräte-/Share-Details und den externen Bildausfall. Die Textmessung ist kein
