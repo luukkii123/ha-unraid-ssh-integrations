@@ -104,7 +104,13 @@ positivem Replikaindex (`com.docker.compose.container-number`). Der Dockername
 bleibt das aktuelle Aktionsziel. Standalone-Container behalten ihre namensbasierte
 Kennung. Bei fehlenden Labels bleibt der bestehende Name als ausdrücklich
 gekennzeichnete Übergangsidentität erhalten; bei doppelten Service-/Replikakennungen
-werden keine neuen Containerentities angelegt. Temporäre Hashnamen werden nicht
+werden keine neuen Containerentities angelegt. Bereits belegte Composezuordnungen
+bleiben in eigenen Entity-Registry-Optionen erhalten. Verlieren solche Container
+vorübergehend Projekt-, Service- oder Replikalabels, bleiben die kanonischen
+Entities unverfügbar; es werden auch nach einem Reload keine Namensaliasentities
+angelegt. Vollständige Labels stellen die bisherigen Entities wieder her. Ein
+bewusster Wechsel eines bekannten Composecontainers zu Standalone erfordert
+daher einen expliziten Zuordnungsabgleich. Temporäre Hashnamen werden nicht
 als kanonische Composeidentität übernommen.
 
 Ein exakt passender vorhandener Registryeintrag wird unter Erhalt seiner

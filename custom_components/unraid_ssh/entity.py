@@ -107,8 +107,47 @@ def _preserve_failed_device(entity: Entity, coordinator: UnraidCoordinator, info
     return info
 
 
+def container_identity_regressed(coordinator: UnraidCoordinator, container: Container) -> bool:
+    """Known Compose containers must not become new name aliases on label loss.
+
+    The evidence lives on our entity registry entries, so it also survives an
+    integration reload. A complete new Compose identity is an explicit change;
+    absent labels are not evidence for a new standalone/legacy identity.
+    """
+    if (container.project and container_identity(coordinator.data, container)[1] == "stable"):
+        return False
+    if not hasattr(coordinator, "hass"):
+        return False
+    registry = er.async_get(coordinator.hass)
+    for item in er.async_entries_for_config_entry(registry, coordinator.entry.entry_id):
+        if item.platform != DOMAIN:
+            continue
+        recorded = item.options.get(DOMAIN, {}).get("container_identity", {})
+        if recorded.get("name") == container.name and recorded.get("kind") == "compose":
+            return True
+    return False
+
+
+def remember_container_identity(coordinator: UnraidCoordinator, container: Container, entity_id: str) -> None:
+    """Persist only positively observed canonical identity, preserving options."""
+    key, status = container_identity(coordinator.data, container)
+    if not container.project or status != "stable":
+        return
+    registry = er.async_get(coordinator.hass)
+    item = registry.async_get(entity_id)
+    if item is None or item.platform != DOMAIN or item.config_entry_id != coordinator.entry.entry_id:
+        return
+    options = dict(item.options.get(DOMAIN, {}))
+    record = {"name": container.name, "key": key, "kind": "compose"}
+    if options.get("container_identity") != record:
+        options["container_identity"] = record
+        registry.async_update_entity_options(entity_id, DOMAIN, options)
+
+
 def can_register_container(coordinator: UnraidCoordinator, container: Container, domain: str) -> bool:
     """Defer uncertain new assignments; existing entities retain their device."""
+    if container_identity_regressed(coordinator, container):
+        return False
     if (container_assignment_complete(coordinator.data, container)
             and container_identity(coordinator.data, container)[1] != "ambiguous"):
         return True
@@ -311,3 +350,5 @@ class ContainerPictureMixin:
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
         self.async_on_remove(self._icons.async_add_listener(self.async_write_ha_state))
+        if container := self.current_container:
+            remember_container_identity(getattr(self, "_fast", self.coordinator), container, self.entity_id)

@@ -182,3 +182,44 @@ async def test_update_follows_recreated_container_and_install_uses_current_servi
     fast.async_request_refresh.assert_awaited_once()
     slow.async_request_refresh.assert_awaited_once()
     await hass.config_entries.async_unload(entry.entry_id)
+
+
+@pytest.mark.parametrize('missing', ['replica', 'service', 'project'])
+async def test_known_compose_container_label_loss_never_creates_aliases(hass, monkeypatch, tmp_path, missing):
+    hass.config.config_dir = str(tmp_path)
+    entry, _, _ = legacy(hass)
+    await load(hass, monkeypatch, entry, compose_snapshot(), {'old-web': ImageStatus('old-web','example/web','sha256:old','sha256:new',True)})
+    before = {e.entity_id for e in er.async_entries_for_config_entry(er.async_get(hass), entry.entry_id)}
+    control = loaded(hass, 'control')[0]
+    snap = compose_snapshot()
+    c = replace(snap.containers[0], **{missing: None if missing == 'replica' else ''})
+    incomplete = replace(snap, containers=(c,), stacks=(replace(snap.stacks[0], containers=(c,)),))
+    entry.runtime_data.coordinator.async_set_updated_data(incomplete)
+    await hass.async_block_till_done()
+    assert {e.entity_id for e in er.async_entries_for_config_entry(er.async_get(hass), entry.entry_id)} == before
+    assert len(loaded(hass, 'control')) == 1
+    assert not control.available
+    entry.runtime_data.coordinator.async_set_updated_data(compose_snapshot())
+    await hass.async_block_till_done()
+    assert loaded(hass, 'control') == [control]
+    assert control.available
+    assert {e.entity_id for e in er.async_entries_for_config_entry(er.async_get(hass), entry.entry_id)} == before
+    await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_compose_label_loss_protection_survives_reload(hass, monkeypatch, tmp_path):
+    hass.config.config_dir = str(tmp_path)
+    entry, _, _ = legacy(hass)
+    await load(hass, monkeypatch, entry, compose_snapshot())
+    registry = er.async_get(hass)
+    before = {e.entity_id for e in er.async_entries_for_config_entry(registry, entry.entry_id)}
+    control_id = loaded(hass, 'control')[0].entity_id
+    monkeypatch.setattr('custom_components.unraid_ssh.coordinator.UnraidCoordinator._async_update_data', AsyncMock(return_value=compose_snapshot(replica=None)))
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert {e.entity_id for e in er.async_entries_for_config_entry(registry, entry.entry_id)} == before
+    entry.runtime_data.coordinator.async_set_updated_data(compose_snapshot())
+    await hass.async_block_till_done()
+    assert [e.entity_id for e in loaded(hass, 'control')] == [control_id]
+    assert loaded(hass, 'control')[0].available
+    await hass.config_entries.async_unload(entry.entry_id)

@@ -12,6 +12,8 @@ from .devices import container_assignment_complete
 from .model import container_key
 from .entity import (
     device_for_container,
+    container_identity_regressed,
+    remember_container_identity,
     disk_device,
     server_device,
     share_device,
@@ -58,7 +60,8 @@ def async_reconcile_devices(hass: HomeAssistant, entry: UnraidConfigEntry) -> No
     if "docker" not in snapshot.failed:
         current = {container.name: container for container in snapshot.containers}
         for container in current.values():
-            if not container_assignment_complete(snapshot, container):
+            if (not container_assignment_complete(snapshot, container)
+                    or container_identity_regressed(coordinator, container)):
                 continue
             device_id = ensure(device_for_container(coordinator, container))
             key = container_key(snapshot, container)
@@ -73,6 +76,9 @@ def async_reconcile_devices(hass: HomeAssistant, entry: UnraidConfigEntry) -> No
                     old_entry = entities.async_get(old_id)
                     if old_entry.config_entry_id == entry.entry_id:
                         entities.async_update_entity(old_id, new_unique_id=canonical)
+                        existing = old_id
+                if existing:
+                    remember_container_identity(coordinator, container, existing)
                 target(domain, role + "_" + key, device_id)
         if not {"compose", "stacks"} & snapshot.failed:
             for stack in snapshot.stacks:
