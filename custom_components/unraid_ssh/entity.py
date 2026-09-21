@@ -17,7 +17,10 @@ from .const import DOMAIN, ENTITY_ICONS
 from .coordinator import UnraidCoordinator
 from .devices import container_assignment_complete, container_device_suffix, share_device_suffix
 from .icon_cache import ContainerIconCache
-from .model import Snapshot, Stack, find_container, find_stack, stack_key
+from .model import (
+    Snapshot, Stack, container_identity, container_key, container_metadata,
+    find_container_by_key, find_stack, stack_key,
+)
 from .parse import Container, Disk, Share, Vm
 
 MANUFACTURER = "Lime Technology"
@@ -83,15 +86,15 @@ def _preserve_failed_device(entity: Entity, coordinator: UnraidCoordinator, info
     snapshot = coordinator.data
     suffix = entity.unique_id.removeprefix(coordinator.entry.entry_id + "_")
     section = next((section for prefixes, section in (
-        (("container_", "update_"), "docker"),
+        (("container_", "update_", "restart_container_"), "docker"),
         (("gpu_util_", "gpu_vram_", "gpu_temp_", "gpu_power_", "gpu_fan_"), "gpu"),
         (("share_used_", "share_free_"), "shares"),
     ) if suffix.startswith(prefixes)), None)
     if snapshot is None or entity.hass is None:
         return info
     if section == "docker":
-        name = suffix.partition("_")[2]
-        failed = not container_assignment_complete(snapshot, find_container(snapshot, name))
+        key = suffix.removeprefix("restart_container_") if suffix.startswith("restart_container_") else suffix.partition("_")[2]
+        failed = not container_assignment_complete(snapshot, find_container_by_key(snapshot, key))
     else:
         failed = section in snapshot.failed
     if not failed:
@@ -106,11 +109,12 @@ def _preserve_failed_device(entity: Entity, coordinator: UnraidCoordinator, info
 
 def can_register_container(coordinator: UnraidCoordinator, container: Container, domain: str) -> bool:
     """Defer uncertain new assignments; existing entities retain their device."""
-    if container_assignment_complete(coordinator.data, container):
+    if (container_assignment_complete(coordinator.data, container)
+            and container_identity(coordinator.data, container)[1] != "ambiguous"):
         return True
     registry = er.async_get(coordinator.hass)
-    prefix = "container" if domain == "switch" else "update"
-    unique_id = f"{coordinator.entry.entry_id}_{prefix}_{container.name}"
+    prefix = {"switch": "container", "update": "update", "button": "restart_container"}[domain]
+    unique_id = f"{coordinator.entry.entry_id}_{prefix}_{container_key(coordinator.data, container)}"
     entity_id = registry.async_get_entity_id(domain, DOMAIN, unique_id)
     if entity_id is None:
         return False
@@ -144,13 +148,13 @@ def loose_containers_device(coordinator: UnraidCoordinator) -> DeviceInfo:
 
 
 def device_for_container(coordinator: UnraidCoordinator, container: Container) -> DeviceInfo:
-    """Return the shared standalone device or the container's stack device."""
+    """Return an individual standalone device or the container's stack device."""
     snapshot = coordinator.data
     if snapshot is None:
         raise ValueError("container device assignment requires a fast snapshot")
     suffix = container_device_suffix(snapshot, container)
     if not container.project:
-        return loose_containers_device(coordinator)
+        return _child(coordinator, suffix, "container", "Docker container", container.name)
     if stack := find_stack(snapshot, container.project):
         return stack_device(coordinator, stack)
     return _child(coordinator, suffix, "stack", "Compose stack", container.project)
@@ -262,20 +266,47 @@ class ContainerPictureMixin:
 
     _icons: ContainerIconCache
     _container_name: str
+    _container_key: str
+    _role = "control"
+
+    @property
+    def current_container(self) -> Container | None:
+        fast = getattr(self, "_fast", self.coordinator)
+        # HA updates the registry entry when an exact legacy identity is
+        # promoted after labels recover. Loaded entities must follow it too.
+        if registry_entry := getattr(self, "registry_entry", None):
+            suffix = registry_entry.unique_id.removeprefix(fast.entry.entry_id + "_")
+            prefix = {"control": "container_", "update": "update_", "restart": "restart_container_"}[self._role]
+            if suffix.startswith(prefix):
+                self._container_key = suffix.removeprefix(prefix)
+        return find_container_by_key(fast.data, self._container_key) if fast.data else None
+
+    @property
+    def item(self) -> Container | None:
+        return self.current_container
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        fast = getattr(self, "_fast", self.coordinator)
+        if container := self.current_container:
+            self._last_metadata = container_metadata(fast.data, container, fast.entry.entry_id, self._role)
+        return getattr(self, "_last_metadata", {"kind": "container", "role": self._role,
+                       "config_entry_id": fast.entry.entry_id, "container_key": self._container_key})
 
     @property
     def device_info(self) -> DeviceInfo:
         fast = getattr(self, "_fast", self.coordinator)
         snapshot = fast.data
         if snapshot is not None:
-            if container := find_container(snapshot, self._container_name):
+            if container := self.current_container:
                 if container_assignment_complete(snapshot, container):
                     self._attr_device_info = device_for_container(fast, container)
         return _preserve_failed_device(self, fast, self._attr_device_info)
 
     @property
     def entity_picture(self) -> str | None:
-        return self._icons.picture(self._container_name)
+        container = self.current_container
+        return self._icons.picture(container.name if container else self._container_name)
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()

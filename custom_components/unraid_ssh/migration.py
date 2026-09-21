@@ -1,4 +1,4 @@
-"""Reconcile owned registry assignments without changing entity identities."""
+"""Reconcile owned assignments and exact legacy IDs, preserving entity IDs."""
 from __future__ import annotations
 
 from typing import Any
@@ -9,10 +9,10 @@ from homeassistant.helpers import device_registry as dr, entity_registry as er
 from .const import DOMAIN
 from .coordinator import UnraidConfigEntry
 from .devices import container_assignment_complete
+from .model import container_key
 from .entity import (
     device_for_container,
     disk_device,
-    loose_containers_device,
     server_device,
     share_device,
     stack_device,
@@ -61,26 +61,19 @@ def async_reconcile_devices(hass: HomeAssistant, entry: UnraidConfigEntry) -> No
             if not container_assignment_complete(snapshot, container):
                 continue
             device_id = ensure(device_for_container(coordinator, container))
-            target("switch", "container_" + container.name, device_id)
-            target("update", "update_" + container.name, device_id)
-        prefix = entry.entry_id + "_container_"
-        for device in own_devices:
-            for domain, identifier in device.identifiers:
-                if domain != DOMAIN or not identifier.startswith(prefix):
-                    continue
-                name = identifier[len(prefix):]
-                if not name or not owned_legacy(device, "container_" + name):
-                    continue
-                cleanup.add(device.id)
-                # Exact legacy identifiers establish the former standalone
-                # classification even when a temporary container has gone.
-                if name not in current:
-                    for entity in er.async_entries_for_device(entities, device.id, include_disabled_entities=True):
-                        if entity.config_entry_id != entry.entry_id or entity.platform != DOMAIN:
-                            continue
-                        for entity_domain, suffix in (("switch", "container_" + name), ("update", "update_" + name)):
-                            if entity.domain == entity_domain and entity.unique_id == entry.entry_id + "_" + suffix:
-                                target(entity_domain, suffix, ensure(loose_containers_device(coordinator)))
+            key = container_key(snapshot, container)
+            for domain, role in (("switch", "container"), ("update", "update"), ("button", "restart_container")):
+                canonical = entry.entry_id + "_" + role + "_" + key
+                legacy = entry.entry_id + "_" + role + "_" + container.name
+                old_id = entities.async_get_entity_id(domain, DOMAIN, legacy)
+                existing = entities.async_get_entity_id(domain, DOMAIN, canonical)
+                # Only a current, exact-name match establishes migration. A
+                # pre-existing canonical entity wins; do not delete its alias.
+                if old_id and not existing and canonical != legacy:
+                    old_entry = entities.async_get(old_id)
+                    if old_entry.config_entry_id == entry.entry_id:
+                        entities.async_update_entity(old_id, new_unique_id=canonical)
+                target(domain, role + "_" + key, device_id)
         if not {"compose", "stacks"} & snapshot.failed:
             for stack in snapshot.stacks:
                 ensure(stack_device(coordinator, stack))

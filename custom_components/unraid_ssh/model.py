@@ -11,6 +11,7 @@ container is ever dropped on the floor.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import json
 import re
 from typing import Any, Callable
 
@@ -460,3 +461,51 @@ def build_update_state(
             update_available=available,
         )
     return out
+
+
+# Metadata contract v1. Keys are opaque to consumers; config_entry_id is the
+# instance namespace. Docker names remain runtime targets, never Compose IDs.
+def container_identity(snapshot: Snapshot, container: Container) -> tuple[str, str]:
+    stack = find_stack(snapshot, container.project) if container.project else None
+    if not container.project:
+        return container.name, "stable"
+    if (not container.service or container.replica is None or stack is None
+            or {"docker", "compose", "stacks"} & snapshot.failed):
+        return container.name, "legacy"
+    matches = [c for c in snapshot.containers if c.project == container.project
+               and c.service == container.service and c.replica == container.replica]
+    if len(matches) != 1:
+        return container.name, "ambiguous"
+    return "compose:" + json.dumps([stack_key(stack), container.service, container.replica],
+                                  ensure_ascii=True, separators=(",", ":")), "stable"
+
+
+def container_key(snapshot: Snapshot, container: Container) -> str:
+    return container_identity(snapshot, container)[0]
+
+
+def find_container_by_key(snapshot: Snapshot, key: str) -> Container | None:
+    return next((c for c in snapshot.containers if container_key(snapshot, c) == key), None)
+
+
+def container_metadata(snapshot: Snapshot, container: Container, entry_id: str, role: str) -> dict[str, Any]:
+    key, status = container_identity(snapshot, container)
+    stack = find_stack(snapshot, container.project) if container.project else None
+    return {"kind": "container", "role": role, "config_entry_id": entry_id,
+            "container_key": key, "container_name": container.name,
+            "container_state": container.state, "image": container.image,
+            "stack_key": stack_key(stack) if stack else None,
+            "stack_name": container.project or None,
+            "compose_service": container.service or None, "compose_replica": container.replica,
+            "identity_status": status}
+
+
+def stack_metadata(stack: Stack, entry_id: str, role: str) -> dict[str, Any]:
+    return {"kind": "stack", "role": role, "config_entry_id": entry_id,
+            "stack_key": stack_key(stack), "stack_name": stack.name,
+            "running_containers": sum(c.state == "running" for c in stack.containers),
+            "total_containers": len(stack.containers)}
+
+
+def stack_restartable(stack: Stack) -> bool:
+    return bool(stack.config_files)

@@ -83,6 +83,8 @@ ENTITY_ICONS: Final = {
     "parity_running": "mdi:sync",
     "mover_active": "mdi:truck-fast",
     "check_updates": "mdi:package-down",
+    "container_restart": "mdi:restart",
+    "stack_restart": "mdi:restart",
     "gpu_util": "mdi:expansion-card",
     "gpu_vram": "mdi:memory",
     "gpu_fan": "mdi:fan",

@@ -149,3 +149,27 @@ async def run_action(client, command: str, timeout: float) -> str:
         tail = "\n".join(result.stderr.strip().splitlines()[-3:])
         raise ActionError(f"exit {result.exit_status}: {tail or 'no stderr'}", result.stderr)
     return result.stdout
+
+
+def container_restart_cmd(name: str) -> str:
+    """A native restart keeps Docker's restart semantics."""
+    return f"docker restart {_q(name)}"
+
+
+def stack_restart_cmd(stack: Stack) -> str:
+    """Restart the actual project with its recorded files; never recreate it."""
+    if not stack.config_files:
+        raise ValueError("stack restart requires recorded compose files")
+    parts = ["docker", "compose"]
+    if stack.folder:
+        parts.append('"$@"')
+    parts += ["-p", _q(stack.name)]
+    for path in stack.config_files:
+        parts += ["-f", _q(path)]
+    command = " ".join(parts + ["restart"])
+    if not stack.folder:
+        return command
+    folder = stack.folder.rstrip("/")
+    env = _q(f"{folder}/.env")
+    return (f"if [ -f {env} ]; then set -- --env-file {env}; else set --; fi && "
+            f"cd {_q(folder)} && {command}")

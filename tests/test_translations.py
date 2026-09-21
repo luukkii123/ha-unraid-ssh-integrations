@@ -89,7 +89,7 @@ def test_device_type_names_are_translatable():
     }
 
     for filename, names in expected.items():
-        assert {key: value["name"] for key, value in _load(filename)["device"].items()} == names
+        assert {key: value["name"] for key, value in _load(filename)["device"].items()} == {**names, "container": "{prefix} {component}"}
 
 
 def test_grouped_entity_names_include_the_component_once():

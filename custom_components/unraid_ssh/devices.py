@@ -17,7 +17,7 @@ def container_assignment_complete(snapshot: Snapshot, container: Container | Non
 def container_device_suffix(snapshot: Snapshot, container: Container) -> str:
     """Return the stable child-device suffix for a container."""
     if not container.project:
-        return "containers"
+        return f"container_{container.name}"
     stack = find_stack(snapshot, container.project)
     return f"stack_{stack_key(stack) if stack else container.project}"
 

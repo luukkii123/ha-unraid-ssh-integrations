@@ -94,7 +94,7 @@ async def test_absent_legacy_without_matching_entity_creates_no_collection(hass,
     await load(hass, monkeypatch, entry, replace(inventory(), containers=(), template_containers=()))
     try:
         assert lookup(hass, entry, '_containers') is None
-        assert (devices.async_get(old.id) is None) == (occupant == 'empty')
+        assert devices.async_get(old.id) is not None
         if occupant != 'empty':
             assert entities.async_get(item.entity_id) == item
     finally:

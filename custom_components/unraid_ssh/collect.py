@@ -24,7 +24,8 @@ _GPU_QUERY = (
 _DOCKER_FORMAT = (
     '{{.Names}}\\t{{.State}}\\t{{.Image}}\\t'
     '{{.Label "com.docker.compose.project"}}\\t{{.Label "com.docker.compose.service"}}\\t'
-    '{{json (.Label "net.unraid.docker.icon")}}'
+    '{{json (.Label "net.unraid.docker.icon")}}\\t'
+    '{{.Label "com.docker.compose.container-number"}}'
 )
 _ICON_METADATA_PATH = "/var/local/emhttp/plugins/dynamix.docker.manager/docker.json"
 _ICON_EMHTTP_ROOT = "/usr/local/emhttp"

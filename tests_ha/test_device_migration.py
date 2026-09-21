@@ -105,14 +105,16 @@ async def test_setup_migrates_legacy_settings_and_translated_names(hass, monkeyp
         if e.entity_id in before:
             assert (e.unique_id, e.name, e.disabled_by) == before[e.entity_id]
     assert set(before) <= {e.entity_id for e in current.values()}
-    grouped = lookup(hass, entry, '_containers')
-    assert grouped.name == f'Example Unraid {containers_word}'
-    for suffix in ('_container_alpha_one', '_update_alpha_one', '_container_beta', '_update_beta'):
-        assert current[suffix].device_id == grouped.id
+    assert lookup(hass, entry, '_container_alpha_one').model == 'Docker container'
+    for suffix in ('_container_alpha_one', '_update_alpha_one'):
+        assert current[suffix].device_id == old.alpha.id
+    for suffix in ('_container_beta', '_update_beta'):
+        assert current[suffix].device_id == old.beta.id
     assert current['_container_alpha_one'].area_id == explicit.id
-    assert current['_container_alpha_one'].labels == {own_label.label_id, label.label_id}
-    assert current['_update_alpha_one'].area_id == area.id
-    assert current['_update_alpha_one'].labels == {label.label_id}
+    assert current['_container_alpha_one'].labels | devices.async_get(old.alpha.id).labels == {own_label.label_id, label.label_id}
+    assert current['_update_alpha_one'].area_id is None
+    assert devices.async_get(old.alpha.id).area_id == area.id
+    assert devices.async_get(old.alpha.id).labels == {label.label_id}
     for suffix in ('_gpu_temp_0', '_gpu_util_0', '_gpu_vram_0', '_gpu_power_0'):
         assert current[suffix].device_id == old.server.id
     for name in ('Media Backup', 'Media_Backup'):
@@ -126,7 +128,7 @@ async def test_setup_migrates_legacy_settings_and_translated_names(hass, monkeyp
     for suffix, device_id in stable_devices.items():
         assert lookup(hass, entry, suffix).id == device_id
     assert 'via_device' not in caplog.text
-    assert devices.async_get(old.alpha.id) is None and devices.async_get(old.beta.id) is None
+    assert devices.async_get(old.alpha.id) is not None and devices.async_get(old.beta.id) is not None
     assert devices.async_get(old.gpu.id) is None and devices.async_get(old.server.id) is not None
     assert entities.async_get(second_before.entity_id) == second_before
     from custom_components.unraid_ssh.migration import async_reconcile_devices
@@ -186,7 +188,7 @@ async def test_partial_stack_setup_preserves_existing_assignments_and_recovery(
     assert all(entity.device_info['identifiers'] == previous.identifiers for entity in loaded)
     assert lookup(hass, entry, '_stack_project') is None
     # Successful Docker labels suffice for a free container even during stack failure.
-    assert own_entities(hass, entry)['_container_beta'].device_id == lookup(hass, entry, '_containers').id
+    assert own_entities(hass, entry)['_container_beta'].device_id == lookup(hass, entry, '_container_beta').id
     fast = entry.runtime_data.coordinator
     fast.async_set_updated_data(stack_inventory())
     await hass.async_block_till_done()
@@ -221,7 +223,7 @@ async def test_partial_stack_discovery_defers_new_entities_until_recovery(hass, 
     current = own_entities(hass, entry)
     assert '_container_alpha_one' not in current and '_update_alpha_one' not in current
     assert lookup(hass, entry, '_stack_project') is None
-    assert current['_container_beta'].device_id == current['_update_beta'].device_id == lookup(hass, entry, '_containers').id
+    assert current['_container_beta'].device_id == current['_update_beta'].device_id == lookup(hass, entry, '_container_beta').id
     entry.runtime_data.coordinator.async_set_updated_data(stack_inventory())
     await hass.async_block_till_done()
     current = own_entities(hass, entry)
@@ -251,20 +253,15 @@ async def test_absent_owned_container_disable_and_cleanup_guards(hass, monkeypat
         if name == 'extra':
             devices.async_update_device(dev.id, new_identifiers=dev.identifiers | {('another_domain', 'extra')})
     await load(hass, monkeypatch, entry, inventory())
-    grouped = lookup(hass, entry, '_containers')
     current = own_entities(hass, entry)
-    assert lookup(hass, entry, '_container_gone_name') is None
     for name in ('gone_name', 'foreign', 'unknown', 'shared', 'extra'):
-        assert current['_container_' + name].disabled_by in (er.RegistryEntryDisabler.USER, er.RegistryEntryDisabler.DEVICE)
+        device = lookup(hass, entry, '_container_' + name)
+        assert device is not None
+        assert current['_container_' + name].device_id == device.id
+        assert current['_container_' + name].disabled_by == er.RegistryEntryDisabler.DEVICE
         assert hass.states.get(current['_container_' + name].entity_id) is None
-        if name in ('gone_name', 'foreign', 'unknown'):
-            assert current['_container_' + name].device_id == grouped.id
-            assert current['_container_' + name].disabled_by == er.RegistryEntryDisabler.USER
-        if name not in ('gone_name', 'shared'):
-            assert lookup(hass, entry, '_container_' + name) is not None
     # HA 2026.7 has shared devices; 2026.9 keeps one device per owner.
     assert devices.async_get(shared_device.id) is not None
-    assert grouped.disabled_by is None
     await hass.config_entries.async_unload(entry.entry_id)
 
 
@@ -282,7 +279,7 @@ async def test_failed_sections_do_not_migrate_then_recover(hass, monkeypatch, tm
         assert own_entities(hass, entry)['_update_absent'].device_id == absent.id
     entry.runtime_data.coordinator.async_set_updated_data(inventory())
     await hass.async_block_till_done()
-    assert own_entities(hass, entry)[suffix].device_id != getattr(old, old_device).id
+    assert (own_entities(hass, entry)[suffix].device_id == getattr(old, old_device).id) is (failed == 'docker')
     await hass.config_entries.async_unload(entry.entry_id)
 
 
@@ -293,7 +290,7 @@ async def test_loaded_switch_and_update_follow_stack_changes_and_new_share(hass,
     hass.config.language = 'en'
     entry = await setup_entry(hass, monkeypatch, PictureSSH(), snapshot())
     before = states_for_entry(hass, entry)
-    assert all('Standalone containers' in s.attributes['friendly_name'] for s in before)
+    assert all(s.attributes['friendly_name'].startswith('Example Unraid web') for s in before)
     fast = entry.runtime_data.coordinator
     member = replace(fast.data.containers[0], project='project', service='web')
     stack = Stack('project', 'project', '/stacks/My Stack', False, True, 1, (), (member,))
@@ -317,7 +314,7 @@ async def test_loaded_switch_and_update_follow_stack_changes_and_new_share(hass,
         await async_update_entity(hass, state.entity_id)
     fast.async_set_updated_data(snapshot())
     await hass.async_block_till_done()
-    assert all('Standalone containers' in s.attributes['friendly_name'] for s in states_for_entry(hass, entry))
-    assert all(entity.device_info['identifiers'] == {(DOMAIN, entry.entry_id + '_containers')}
+    assert all(s.attributes['friendly_name'].startswith('Example Unraid web') for s in states_for_entry(hass, entry))
+    assert all(entity.device_info['identifiers'] == {(DOMAIN, entry.entry_id + '_container_web')}
                for entity in loaded)
     await hass.config_entries.async_unload(entry.entry_id)

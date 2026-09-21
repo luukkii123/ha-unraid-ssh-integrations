@@ -25,7 +25,7 @@ from . import actions
 from .const import UPDATE_TIMEOUT
 from .coordinator import UnraidConfigEntry, UnraidCoordinator, UpdateCoordinator, UpdateState
 from .entity import ContainerPictureMixin, can_register_container, device_for_container, track_new
-from .model import ImageStatus, Snapshot, container_updatable, find_container, find_stack
+from .model import ImageStatus, Snapshot, container_updatable, container_key, find_stack
 from .parse import Container
 
 DESCRIPTION = UpdateEntityDescription(key="container_update")
@@ -36,6 +36,7 @@ def _short(digest: str | None) -> str | None:
 
 
 class ContainerUpdate(ContainerPictureMixin, CoordinatorEntity[UpdateCoordinator], UpdateEntity):
+    _role = "update"
     _attr_has_entity_name = True
 
     def __init__(self, updates: UpdateCoordinator, fast: UnraidCoordinator, container: Container) -> None:
@@ -44,10 +45,11 @@ class ContainerUpdate(ContainerPictureMixin, CoordinatorEntity[UpdateCoordinator
         self._fast = fast
         self._name = container.name
         self._container_name = container.name
+        self._container_key = container_key(fast.data, container)
         self._icons = fast.entry.runtime_data.icons
-        self._attr_unique_id = f"{updates.entry.entry_id}_update_{container.name}"
+        self._attr_unique_id = f"{updates.entry.entry_id}_update_{self._container_key}"
         self._attr_device_info = device_for_container(fast, container)
-        self._attr_translation_key = "container_update"
+        self._attr_translation_key = "container_update" if container.project else "standalone_update"
         self._attr_translation_placeholders = {"container": container.name}
 
     async def async_added_to_hass(self) -> None:
@@ -56,7 +58,8 @@ class ContainerUpdate(ContainerPictureMixin, CoordinatorEntity[UpdateCoordinator
 
     @property
     def _status(self) -> ImageStatus | None:
-        return self.coordinator.data.images.get(self._name) if self.coordinator.data else None
+        container = self.current_container
+        return self.coordinator.data.images.get(container.name) if self.coordinator.data and container else None
 
     @property
     def supported_features(self) -> UpdateEntityFeature:
@@ -69,7 +72,7 @@ class ContainerUpdate(ContainerPictureMixin, CoordinatorEntity[UpdateCoordinator
         `__init__` -- offers no install button that could only fail.
         """
         snapshot = self._fast.data
-        container = find_container(snapshot, self._name) if snapshot else None
+        container = self.current_container
         if container is None:
             return UpdateEntityFeature(0)
         stack = find_stack(snapshot, container.project) if container.project else None
@@ -107,7 +110,7 @@ class ContainerUpdate(ContainerPictureMixin, CoordinatorEntity[UpdateCoordinator
         would be invisible.
         """
         snapshot = self._fast.data
-        container = find_container(snapshot, self._name) if snapshot else None
+        container = self.current_container
         if container is None:
             raise HomeAssistantError(f"unraid_ssh: container {self._name} is not present")
         stack = find_stack(snapshot, container.project) if container.project else None
@@ -145,7 +148,7 @@ def _plan(
         make = None
         if state is not None and container.name in state.images and can_register_container(fast, container, "update"):
             make = partial(ContainerUpdate, updates, fast, container)
-        yield f"update_{container.name}", make
+        yield f"update_{container_key(snapshot, container)}", make
 
 
 def expected_keys(fast: UnraidCoordinator, snapshot: Snapshot) -> set[str]:

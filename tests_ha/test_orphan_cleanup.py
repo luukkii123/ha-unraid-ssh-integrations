@@ -25,113 +25,54 @@ async def poll(hass, entry, snapshot):
     await hass.async_block_till_done()
 
 
-async def test_an_absent_container_survives_the_grace_period_and_then_goes(hass, monkeypatch, tmp_path, freezer, caplog):
+async def test_absent_containers_keep_registry_and_device_after_grace(hass, monkeypatch, tmp_path, freezer):
     hass.config.config_dir = str(tmp_path)
     entry, _, _ = legacy(hass)
     await load(hass, monkeypatch, entry, inventory())
     try:
-        assert '_container_beta' in own_entities(hass, entry)
+        before = own_entities(hass, entry)
+        device = lookup(hass, entry, '_container_beta')
         gone = without(inventory(), 'beta')
         await poll(hass, entry, gone)
-        # First poll without it: the clock starts, nothing is removed.
-        assert '_container_beta' in own_entities(hass, entry)
-        assert entry.entry_id + '_container_beta' in entry.runtime_data.stale_since
-
-        freezer.tick(STALE_GRACE - timedelta(seconds=30))
+        freezer.tick(STALE_GRACE * 3)
         await poll(hass, entry, gone)
-        assert '_container_beta' in own_entities(hass, entry)
-
-        caplog.clear()
-        freezer.tick(timedelta(minutes=1))
-        await poll(hass, entry, gone)
-        current = own_entities(hass, entry)
-        assert '_container_beta' not in current and '_update_beta' not in current
-        assert '_container_alpha_one' in current       # the one still running stays
-        assert 'absent for 5 min' in caplog.text
+        for suffix in ('_container_beta', '_update_beta'):
+            assert own_entities(hass, entry)[suffix] == before[suffix]
+        assert dr.async_get(hass).async_get(device.id) is not None
         assert entry.runtime_data.stale_since == {}
     finally:
         await hass.config_entries.async_unload(entry.entry_id)
 
 
-async def test_a_container_that_comes_back_within_the_window_keeps_its_entity(hass, monkeypatch, tmp_path, freezer):
+async def test_container_returns_to_existing_entity_after_long_absence(hass, monkeypatch, tmp_path, freezer):
     hass.config.config_dir = str(tmp_path)
     entry, _, _ = legacy(hass)
     await load(hass, monkeypatch, entry, inventory())
     try:
-        before = own_entities(hass, entry)['_container_beta']
-        await poll(hass, entry, without(inventory(), 'beta'))
-        freezer.tick(STALE_GRACE - timedelta(seconds=30))
-        await poll(hass, entry, inventory())            # `compose up` finished
-        assert entry.runtime_data.stale_since == {}
-        freezer.tick(STALE_GRACE * 2)
+        before = own_entities(hass, entry)['_container_alpha_one']
+        await poll(hass, entry, without(inventory(), 'alpha_one'))
+        freezer.tick(STALE_GRACE * 3)
+        await poll(hass, entry, without(inventory(), 'alpha_one'))
+        assert hass.states.get(before.entity_id).state == 'unavailable'
         await poll(hass, entry, inventory())
-        assert own_entities(hass, entry)['_container_beta'] == before
+        assert own_entities(hass, entry)['_container_alpha_one'] == before
+        assert hass.states.get(before.entity_id).state == 'on'
     finally:
         await hass.config_entries.async_unload(entry.entry_id)
 
 
-async def test_a_failed_section_neither_removes_nor_resets_the_clock(hass, monkeypatch, tmp_path, freezer):
+async def test_failed_docker_poll_never_removes_legacy_container(hass, monkeypatch, tmp_path, freezer):
     hass.config.config_dir = str(tmp_path)
     entry, _, _ = legacy(hass)
     await load(hass, monkeypatch, entry, inventory())
     try:
         gone = without(inventory(), 'beta')
         await poll(hass, entry, gone)
-        started = entry.runtime_data.stale_since[entry.entry_id + '_container_beta']
-
-        # `docker ps` unreadable: the server said nothing about containers.
-        freezer.tick(STALE_GRACE * 2)
-        await poll(hass, entry, replace(gone, containers=(), template_containers=(),
-                                        failed=frozenset({'docker'})))
-        assert '_container_beta' in own_entities(hass, entry)
-        assert entry.runtime_data.stale_since[entry.entry_id + '_container_beta'] == started
-
-        # And the clock kept running, so the next readable poll removes it.
+        freezer.tick(STALE_GRACE * 3)
+        await poll(hass, entry, replace(gone, failed=frozenset({'docker'})))
         await poll(hass, entry, gone)
-        assert '_container_beta' not in own_entities(hass, entry)
-    finally:
-        await hass.config_entries.async_unload(entry.entry_id)
-
-
-async def test_a_removed_container_returns_with_the_same_unique_id(hass, monkeypatch, tmp_path, freezer):
-    hass.config.config_dir = str(tmp_path)
-    entry, _, _ = legacy(hass)
-    await load(hass, monkeypatch, entry, inventory())
-    try:
-        unique_id = own_entities(hass, entry)['_container_beta'].unique_id
-        await poll(hass, entry, without(inventory(), 'beta'))   # the clock starts here
-        freezer.tick(STALE_GRACE * 2)
-        await poll(hass, entry, without(inventory(), 'beta'))
-        assert '_container_beta' not in own_entities(hass, entry)
-        loaded = {item.unique_id for platform in async_get_platforms(hass, DOMAIN)
-                  for item in platform.entities.values()}
-        assert unique_id not in loaded
-
-        await poll(hass, entry, inventory())            # the container is back
-        item = own_entities(hass, entry)['_container_beta']
-        assert item.unique_id == unique_id
-        loaded = {i.unique_id for p in async_get_platforms(hass, DOMAIN) for i in p.entities.values()}
-        assert unique_id in loaded
-    finally:
-        await hass.config_entries.async_unload(entry.entry_id)
-
-
-async def test_an_emptied_device_falls_but_the_server_device_never_does(hass, monkeypatch, tmp_path, freezer):
-    hass.config.config_dir = str(tmp_path)
-    entry, _, _ = legacy(hass)
-    await load(hass, monkeypatch, entry, inventory())
-    try:
-        collection = lookup(hass, entry, '_containers')
-        server = lookup(hass, entry, '')
-        assert collection is not None and server is not None
-        empty = replace(inventory(), containers=(), template_containers=())
-        await poll(hass, entry, empty)
-        freezer.tick(STALE_GRACE * 2)
-        await poll(hass, entry, empty)
-        devices = dr.async_get(hass)
-        assert devices.async_get(collection.id) is None
-        assert devices.async_get(server.id) is not None
-        assert own_entities(hass, entry)['_cpu_percent'].device_id == server.id
+        assert '_container_beta' in own_entities(hass, entry)
+        assert '_update_beta' in own_entities(hass, entry)
     finally:
         await hass.config_entries.async_unload(entry.entry_id)
 
@@ -200,10 +141,10 @@ async def test_a_failed_sensor_section_keeps_every_channel(hass, monkeypatch, tm
     ('_vm_Guest', True, False),
     ('_disk_disk1', True, False),
     ('_stack_My Stack', True, False),
-    ('_containers', True, False),
+    ('_container_alpha_one', True, False),
     ('_vm_Guest', False, True),             # the VM is gone from the snapshot
     ('_disk_disk1', False, True),
-    ('_containers', False, True),
+    ('_container_alpha_one', False, True),
 ])
 async def test_manual_device_removal_follows_the_snapshot(hass, monkeypatch, tmp_path, suffix, present, allowed):
     hass.config.config_dir = str(tmp_path)

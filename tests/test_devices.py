@@ -8,13 +8,13 @@ from unraid_ssh.model import build_snapshot, stack_key
 from unraid_ssh.parse import Container
 
 
-def test_all_standalone_containers_share_one_suffix():
+def test_standalone_containers_have_individual_stable_suffixes():
     snapshot = build_snapshot({}, None)
     first = Container("alpha", "running", "example/a:latest", "", "")
     second = Container("beta", "exited", "example/b:latest", "", "")
 
-    assert container_device_suffix(snapshot, first) == "containers"
-    assert container_device_suffix(snapshot, second) == "containers"
+    assert container_device_suffix(snapshot, first) == "container_alpha"
+    assert container_device_suffix(snapshot, second) == "container_beta"
 
 
 def test_orphan_compose_project_is_not_a_standalone_container():

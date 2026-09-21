@@ -20,12 +20,13 @@ async def test_fresh_layout_and_reload(hass, monkeypatch, tmp_path, language, lo
     await load(hass, monkeypatch, entry, inventory())
     devices, entities = dr.async_get(hass), er.async_get(hass)
     own = own_entities(hass, entry)
-    assert len(dr.async_entries_for_config_entry(devices, entry.entry_id)) == 7
-    assert lookup(hass, entry, '_containers').name == f'Example Unraid {loose_word}'
+    assert len(dr.async_entries_for_config_entry(devices, entry.entry_id)) == 8
+    assert lookup(hass, entry, '_container_alpha_one').name == 'Example Unraid alpha_one'
+    assert lookup(hass, entry, '_container_beta').model == 'Docker container'
     assert lookup(hass, entry, '_gpu_0') is None
     assert lookup(hass, entry, '_disk_disk1').name == f'Example Unraid {disk_word} disk1'
     assert lookup(hass, entry, '_vm_Guest').name == 'Example Unraid VM Guest'
-    assert own['_container_alpha_one'].device_id == own['_container_beta'].device_id
+    assert own['_container_alpha_one'].device_id != own['_container_beta'].device_id
     server = lookup(hass, entry, '')
     for name in ('Media Backup', 'Media_Backup'):
         share = lookup(hass, entry, '_share_' + name)

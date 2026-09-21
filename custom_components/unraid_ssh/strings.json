@@ -77,6 +77,7 @@
     }
   },
   "device": {
+    "container": {"name": "{prefix} {component}"},
     "disk": {"name": "{prefix} Disk {component}"},
     "stack": {"name": "{prefix} Stack {component}"},
     "vm": {"name": "{prefix} VM {component}"},
@@ -126,6 +127,9 @@
       "disk_spundown": {"name": "Spun down"}
     },
     "button": {
+      "container_restart": {"name": "Restart {container}"},
+      "standalone_restart": {"name": "Restart"},
+      "stack_restart": {"name": "Restart"},
       "check_updates": {"name": "Check for updates"}
     },
     "switch": {
@@ -134,6 +138,7 @@
       "vm": {"name": "Power"}
     },
     "update": {
+      "standalone_update": {"name": "Update"},
       "container_update": {"name": "{container} update"}
     }
   }

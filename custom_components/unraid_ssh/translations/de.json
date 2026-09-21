@@ -60,6 +60,7 @@
     }
   },
   "device": {
+    "container": {"name": "{prefix} {component}"},
     "disk": {"name": "{prefix} Festplatte {component}"},
     "stack": {"name": "{prefix} Stack {component}"},
     "vm": {"name": "{prefix} VM {component}"},
@@ -100,6 +101,9 @@
       "disk_spundown": {"name": "Schlafend"}
     },
     "button": {
+      "container_restart": {"name": "{container} neu starten"},
+      "standalone_restart": {"name": "Neu starten"},
+      "stack_restart": {"name": "Neu starten"},
       "check_updates": {"name": "Updates jetzt prüfen"}
     },
     "switch": {
@@ -108,6 +112,7 @@
       "vm": {"name": "Strom"}
     },
     "update": {
+      "standalone_update": {"name": "Update"},
       "container_update": {"name": "{container} Update"}
     }
   }

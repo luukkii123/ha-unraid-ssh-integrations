@@ -16,6 +16,7 @@ Compose-Stacks und verliert nach Updates die VMs. SSH ist immer da.
 | Temperaturen | Je Kanal aus `/sys/class/hwmon` ein Sensor — CPU, Mainboard, NVMe —, dazu die beiden festen Sensoren **CPU-Temperatur** und **Mainboard-Temperatur**, deren ID sich auch bei einem Hardwaretausch nicht ändert |
 | Lüfter | Je Lüfter **Drehzahl** in RPM und **Leistung** in Prozent (aus `pwm`, 0–255); beim GPU-Lüfter kommen die Prozent direkt von `nvidia-smi`. Nur Anzeige — die Integration schreibt nie nach `pwm` |
 | Schalter | Docker-Container, Compose-Stacks (über das Compose-Manager-Plugin) und VMs — je Container, Stack oder VM ein/aus |
+| Neustart | Native Docker-/Compose-Restartbuttons; keine Stop/Start-Kette |
 | Updates | `update`-Entität je Container mit Registry-Digest, mit „Installieren" — auch für Compose-Container, die Unraids eigene Prüfung nicht sieht; dazu ein Zähler und ein Knopf „Jetzt prüfen" |
 
 Diese Fassung bereitet **0.3.0** vor. Der bisher veröffentlichte Stand ist
@@ -81,33 +82,60 @@ Je Abfrage eine SSH-Verbindung mit **einem** Befehlsstrang: `var.ini`,
 Compose-Managers, `virsh list`. Die Auswertung passiert in Home Assistant. Auf
 Unraid liegt nichts; ein Neustart löscht nichts.
 
-## Aufräumen: verwaiste Entitäten ab 0.3.0
+## Containeridentitäten und Dashboardvertrag (lokaler Entwicklungsstand)
 
-Bis 0.2.0 hat die Integration **nie** eine Entität entfernt. Das war auf Dauer
-unhaltbar: Playwright- und Build-Container mit Docker-Zufallsnamen hinterließen
-hunderte Schalter auf `unavailable`.
+Containersteuerung, Updates und native Restartbuttons liefern strukturierte
+Attribute. Karten ordnen sie ausschließlich innerhalb derselben Config Entry zu:
 
-Seit 0.3.0 entfernt sie eine Entität, deren Gegenstück auf dem Server
-verschwunden ist — aber erst nach **fünf Minuten** durchgehend erfolgreicher
-Abfragen ohne Wiederauftauchen. Diese Karenz ist kein Zögern: `compose up` und
-Unraids `update_container` reißen einen Container für Sekunden ab und legen ihn
-neu an, und ohne das Fenster verlöre die Entität dabei ihren Bereich, ihren
-Namen und ihre Labels. Taucht sie vorher wieder auf, passiert nichts.
+| Attribut | Vertrag |
+| --- | --- |
+| `kind` | `container` oder `stack` |
+| `role` | `control`, `update` oder `restart` |
+| `config_entry_id` | Instanznamensraum |
+| `container_key` | Opake Containerkennung; gleiche Kennung auf Switch, Update und Restart |
+| `container_name`, `container_state`, `image` | Aktueller Dockername, genauer Zustand und Image |
+| `stack_key`, `stack_name` | Stabile Stackkennung und aktueller Composeprojektname; bei Standalone `null` |
+| `compose_service`, `compose_replica` | Echte Compose-Labels, fehlend als `null` |
+| `identity_status` | `stable`, `legacy` oder `ambiguous` |
+| `running_containers`, `total_containers` | Containerzahlen auf Stacksteuerung und Stackrestart |
 
-Drei Dinge schützen zusätzlich:
+Die Composekennung besteht aus vorhandener stabiler Stackkennung, Service und
+positivem Replikaindex (`com.docker.compose.container-number`). Der Dockername
+bleibt das aktuelle Aktionsziel. Standalone-Container behalten ihre namensbasierte
+Kennung. Bei fehlenden Labels bleibt der bestehende Name als ausdrücklich
+gekennzeichnete Übergangsidentität erhalten; bei doppelten Service-/Replikakennungen
+werden keine neuen Containerentities angelegt. Temporäre Hashnamen werden nicht
+als kanonische Composeidentität übernommen.
 
-- **Eine fehlgeschlagene Abfrage zählt nicht.** Kann `docker ps` nicht gelesen
-  werden, wird über Container gar nicht geurteilt — die Uhr läuft weder los
-  noch zurück.
-- **Ein heruntergefahrener Stack ist nicht verwaist.** Solange sein Ordner im
-  Compose-Manager existiert, bleiben sein Gerät und seine Schalter.
-- **Server-Entitäten und das Server-Gerät bleiben immer.**
+Ein exakt passender vorhandener Registryeintrag wird unter Erhalt seiner
+`entity_id`, Benutzereinstellungen und Verbraucherreferenzen auf die stabile
+Kennung umgestellt. Ist bereits eine kanonische Entity vorhanden, gewinnt sie;
+die alte Aliasentity wird weder gelöscht noch blind zusammengeführt. Historische
+Namen ohne belegte Zuordnung werden nicht geraten. Compose-Container bleiben am
+Stackgerät; Standalone-Container erhalten jeweils ein Gerät `Docker container`.
 
-Ein Gerät, das danach keine Entität mehr hat, wird mit entfernt; das Sammelgerät
-`<Präfix> Freie Container` entsteht neu, sobald wieder ein freier Container da
-ist. Wer nicht warten will, löscht ein Gerät direkt über die Geräteseite —
-das bietet Home Assistant genau dann an, wenn die aktuelle Abfrage es nicht
-mehr kennt.
+Restart führt **`docker restart` beziehungsweise `docker compose … restart`** aus.
+Es gibt keine Stop/Start-Kette. Stackrestart ist nur mit den gemeldeten
+Compose-Dateien verfügbar und verwendet den tatsächlich laufenden Projektnamen.
+Fehler und Timeouts lösen ebenfalls eine Zustandsaktualisierung aus. Updates
+behalten ihre vorhandenen INSTALL-Fähigkeitsprüfungen.
+
+## Aufräumen und Bestandsschutz
+
+Container-Schalter, Container-Updates und Container-Restartbuttons werden nicht
+automatisch wegen Abwesenheit gelöscht. Dies schützt alte Entity-IDs während der
+Identitätsumstellung. Eine spätere Bereinigung benötigt einen ausdrücklichen
+Registry- und Verbraucherabgleich. Auch leere alte Containergeräte bleiben erhalten.
+Für andere bekannte Entitätstypen gilt weiterhin die fünfminütige Karenz mit
+Prüfung erfolgreicher Quellabschnitte. Serverentities bleiben geschützt.
+
+**Installationsgrenze:** Der Liveabgleich vom 21.09.2026 zeigt bereits einzelne
+Containergeräte, während der lokale Ausgangsstand `d60b324` freie Container noch
+zusammenfasst. Die Gleichheit des installierten Pythoncodes wurde nicht belegt.
+Dieser Entwicklungsstand wurde weder veröffentlicht noch live installiert.
+Vor einer Installation müssen installierter Code und Registrybestand privat
+abgeglichen werden; die bestehende historische Datenschutzsperre für Releasetags
+bleibt unverändert wirksam.
 
 ## Was sie bewusst nicht kann
 

@@ -390,6 +390,7 @@ class Container:
     project: str               # com.docker.compose.project label, "" for template containers
     service: str               # com.docker.compose.service label, "" for template containers
     icon: str | None = None     # decoded net.unraid.docker.icon label
+    replica: int | None = None  # com.docker.compose.container-number, never inferred from name
 
 
 def parse_containers(text: str) -> list[Container]:
@@ -415,6 +416,7 @@ def parse_containers(text: str) -> list[Container]:
                 project=parts[3],
                 service=parts[4],
                 icon=icon,
+                replica=int(parts[6]) if len(parts) > 6 and parts[6].isascii() and parts[6].isdigit() and int(parts[6]) > 0 else None,
             )
         )
     return out

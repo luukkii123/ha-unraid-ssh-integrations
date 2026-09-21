@@ -19,7 +19,9 @@ from .entity import ContainerPictureMixin, UnraidEntity, can_register_container,
 from .parse import Container
 from .model import (
     Snapshot,
-    find_container,
+    find_container_by_key,
+    container_key,
+    stack_metadata,
     find_stack_by_key,
     find_vm,
     stack_key,
@@ -62,6 +64,12 @@ class UnraidSwitch(UnraidEntity, SwitchEntity):
     entity_description: UnraidSwitchDescription
 
     @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        if self.entity_description.key == "stack" and self.item is not None:
+            return stack_metadata(self.item, self.coordinator.entry.entry_id, "control")
+        return None
+
+    @property
     def is_on(self) -> bool | None:
         item = self.item
         return None if item is None else self.entity_description.is_on_fn(item)
@@ -92,10 +100,11 @@ class ContainerSwitch(ContainerPictureMixin, UnraidSwitch):
     def __init__(self, coordinator: UnraidCoordinator, container: Container) -> None:
         self._icons = coordinator.entry.runtime_data.icons
         self._container_name = container.name
+        self._container_key = container_key(coordinator.data, container)
         super().__init__(
             coordinator, CONTAINER, device_for_container(coordinator, container),
-            f"container_{container.name}", container.name, find_container,
-            {"container": container.name},
+            f"container_{self._container_key}", self._container_key, find_container_by_key,
+            {"container": container.name}, use_device_name=not container.project,
         )
 
 
@@ -110,7 +119,7 @@ def _plan_container(coordinator: UnraidCoordinator, container: Container) -> Ite
     count as expected: the container is demonstrably there, only its device is
     not yet decidable.
     """
-    key = f"container_{container.name}"
+    key = f"container_{container_key(coordinator.data, container)}"
     make = partial(ContainerSwitch, coordinator, container)
     yield key, make if can_register_container(coordinator, container, "switch") else None
 

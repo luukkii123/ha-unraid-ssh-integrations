@@ -1,21 +1,10 @@
-"""Remove entities the server no longer has -- but only after a grace period.
+"""Prune non-container entities after the successful-poll grace period.
 
-Until 0.3.0 this integration never removed anything, and it showed: 187
-entities of one entry stood at `unavailable`, almost all of them switches of
-short-lived containers with random Docker names. This module is the second
-half of the reconciliation that `migration.py` starts. Migration decides which
-device an entity belongs to; this decides whether the entity should still
-exist at all.
-
-Two rules keep it from deleting live things. A candidate is only judged when
-the sections it comes from actually parsed this poll -- a failed `docker`
-section says nothing about containers -- and it has to stay absent for
-`STALE_GRACE`, because `compose up` and Unraid's own `update_container` tear a
-container down and recreate it within seconds. Losing an entity there would
-cost the user its area, its name and its labels.
-
-The clocks live in `UnraidRuntime`, not in the registry: a restart of Home
-Assistant resets them, which costs one grace period and no correctness.
+Container controls, updates and restarts are deliberately preserved during
+identity migration. Removing their consumer references requires an explicit
+registry/consumer audit, not a missing Docker name. Other entity types keep
+their existing section-success and grace-period protections. The clocks are
+runtime-only; reloading an entry resets them without removing anything.
 """
 
 from __future__ import annotations
@@ -60,9 +49,8 @@ _DEVICE_SECTIONS: tuple[tuple[tuple[str, ...], frozenset[str]], ...] = (
     (("share_",), frozenset({"shares"})),
     (("stack_",), frozenset({"docker", "compose", "stacks"})),
     (("vm_",), frozenset({"vms"})),
-    # `containers` is the shared device of all standalone containers;
-    # `container_<name>` is the per-container device of installations from
-    # before 0.2.0, which migration empties but does not always reach.
+    # Both historic shared devices and individual standalone devices can be
+    # removed manually only when the current successful snapshot excludes them.
     (("containers", "container_"), frozenset({"docker"})),
 )
 
@@ -94,7 +82,7 @@ def expected_keys(entry: UnraidConfigEntry, snapshot: Snapshot) -> set[str]:
         | binary_sensor.expected_keys(fast, snapshot)
         | switch.expected_keys(fast, snapshot)
         | update.expected_keys(fast, snapshot)
-        | button.expected_keys()
+        | button.expected_keys(fast, snapshot)
     )
 
 
@@ -110,8 +98,8 @@ def expected_device_suffixes(snapshot: Snapshot) -> set[str]:
     suffixes |= {share_device_suffix(share.name) for share in snapshot.shares}
     suffixes |= {f"stack_{stack_key(stack)}" for stack in snapshot.stacks}
     suffixes |= {f"vm_{vm.name}" for vm in snapshot.vms}
-    # Covers the shared standalone device as well: `container_device_suffix`
-    # answers `containers` for a container without a project.
+    # Standalone containers have individual devices; Compose members share
+    # their stack device.
     suffixes |= {container_device_suffix(snapshot, c) for c in snapshot.containers}
     return suffixes
 
@@ -139,6 +127,10 @@ def async_prune_stale(hass: HomeAssistant, entry: UnraidConfigEntry) -> None:
         if item.platform != DOMAIN:
             continue
         unique_id = item.unique_id
+        # Container identities are undergoing a conservative transition. Keep
+        # old consumer references until an explicit registry/consumer audit.
+        if unique_id.removeprefix(prefix).startswith(("container_", "update_", "restart_container_")):
+            continue
         if unique_id in expected:
             continue                       # back, or never gone: the clock is dropped
         sections = _sections(_ENTITY_SECTIONS, unique_id.removeprefix(prefix))
