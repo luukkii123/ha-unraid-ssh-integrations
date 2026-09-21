@@ -260,3 +260,11 @@ entfernt, darunter Schalter längst gelöschter Test-Container; alle 44 zu
 dem Zeitpunkt eingeschalteten Schalter behielten ihre Entity-ID, das
 Systemprotokoll blieb ohne Eintrag von `unraid_ssh`. Ein Stack-Schalter
 oder Update-Install ist mit 0.3.0 weiterhin nicht produktiv ausgelöst worden.
+
+## Geprüft – 0.4.0, 21.09.2026
+
+183 Python-Tests und 113 Tests mit Home Assistant 2026.9.2 bestanden;
+die 113 HA-Tests zusätzlich mit 2026.7.0 geprüft. Native Restartbefehle,
+stabile Composeidentitäten, Migration und verlorene Compose-Labels sind
+abgedeckt. Statische UI-/Übersetzungsprüfung bestanden. Produktive
+Container wurden für die Abnahme nicht neu gestartet.

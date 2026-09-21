@@ -1,13 +1,19 @@
 {
   "domain": "unraid_ssh",
   "name": "Unraid SSH",
-  "codeowners": ["@luukkii123"],
+  "codeowners": [
+    "@luukkii123"
+  ],
   "config_flow": true,
-  "dependencies": ["http"],
+  "dependencies": [
+    "http"
+  ],
   "documentation": "https://github.com/luukkii123/ha-unraid-ssh-integrations",
   "integration_type": "hub",
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/luukkii123/ha-unraid-ssh-integrations/issues",
-  "requirements": ["asyncssh==2.24.0"],
-  "version": "0.3.0"
+  "requirements": [
+    "asyncssh==2.24.0"
+  ],
+  "version": "0.4.0"
 }
