@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import partial
 from typing import Any
 
@@ -44,6 +44,9 @@ CONTAINER = UnraidSwitchDescription(
     off_cmd=lambda c: actions.container_stop_cmd(c.name),
     timeout=CONTAINER_ACTION_TIMEOUT,
 )
+#: A standalone container is alone on its device, so the device already says
+#: which container it is and the switch needs only to say what it switches.
+STANDALONE_CONTAINER = replace(CONTAINER, translation_key="standalone_container")
 STACK = UnraidSwitchDescription(
     key="stack",
     is_on_fn=lambda s: s.running > 0,
@@ -101,10 +104,15 @@ class ContainerSwitch(ContainerPictureMixin, UnraidSwitch):
         self._icons = coordinator.entry.runtime_data.icons
         self._container_name = container.name
         self._container_key = container_key(coordinator.data, container)
+        # Named "Status" rather than after the device: a switch that shares its
+        # name with its device reads as the device itself, and before 0.5.0 a
+        # VM's switch was called "Strom" -- neither says that it starts and
+        # stops something, which is what on/off means here.
         super().__init__(
-            coordinator, CONTAINER, device_for_container(coordinator, container),
+            coordinator, CONTAINER if container.project else STANDALONE_CONTAINER,
+            device_for_container(coordinator, container),
             f"container_{self._container_key}", self._container_key, find_container_by_key,
-            {"container": container.name}, use_device_name=not container.project,
+            {"container": container.name},
         )
 
 
@@ -138,7 +146,6 @@ def _plan(coordinator: UnraidCoordinator, snapshot: Snapshot) -> Iterator[Planne
         key = stack_key(stack)
         make = partial(
             UnraidSwitch, coordinator, STACK, device, f"stack_{key}", key, find_stack_by_key,
-            use_device_name=True,
         )
         # A stack without a compose file gets no switch (`stack_switchable`),
         # but it exists, so its key stays expected: a stack that is merely down

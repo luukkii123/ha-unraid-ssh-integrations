@@ -313,3 +313,13 @@ def test_parse_remote_digests(fixture):
     assert "ghcr.io/esphome/esphome:stable" in remote
     assert remote["ghcr.io/esphome/esphome:stable"].startswith("sha256:")
     assert parse.parse_remote_digests("some/ref\t\n") == {"some/ref": None}
+
+
+def test_parse_containers_reads_the_unraid_managed_label():
+    line = "\t".join(["plex", "running", "img", "", "", '""', "", "dockerman"])
+    one_off = "\t".join(["funny_einstein", "exited", "img", "", "", '""', "", ""])
+    old_format = "\t".join(["n8n", "running", "img", "smarthome", "n8n"])
+    by_name = {c.name: c for c in parse.parse_containers("\n".join([line, one_off, old_format]))}
+    assert by_name["plex"].managed == "dockerman" and parse.container_is_owned(by_name["plex"])
+    assert by_name["funny_einstein"].managed == "" and not parse.container_is_owned(by_name["funny_einstein"])
+    assert by_name["n8n"].managed == "" and parse.container_is_owned(by_name["n8n"])

@@ -94,9 +94,9 @@ def test_device_type_names_are_translatable():
 
 def test_grouped_entity_names_include_the_component_once():
     expected = {
-        "strings.json": ("Used", "Free", "GPU {index} {gpu} utilization", "{container} update"),
-        "translations/en.json": ("Used", "Free", "GPU {index} {gpu} utilization", "{container} update"),
-        "translations/de.json": ("Belegt", "Frei", "GPU {index} {gpu} Auslastung", "{container} Update"),
+        "strings.json": ("Used space", "Free space", "GPU {index} {gpu} utilization", "{container} update"),
+        "translations/en.json": ("Used space", "Free space", "GPU {index} {gpu} utilization", "{container} update"),
+        "translations/de.json": ("Belegter Speicher", "Freier Speicher", "GPU {index} {gpu} Auslastung", "{container} Update"),
     }
 
     for filename, names in expected.items():
@@ -117,24 +117,24 @@ def test_hardware_sensor_keys_are_translated_in_both_languages():
             "board_temp": "Board temperature",
             "hw_temp": "Temperature {chip} {label}",
             "fan_rpm": "Fan {label} speed",
-            "fan_percent": "Fan {label} power",
-            "gpu_fan": "GPU {index} {gpu} fan",
+            "fan_percent": "Fan {label} PWM duty",
+            "gpu_fan": "GPU {index} {gpu} fan speed",
         },
         "translations/en.json": {
             "cpu_temp": "CPU temperature",
             "board_temp": "Board temperature",
             "hw_temp": "Temperature {chip} {label}",
             "fan_rpm": "Fan {label} speed",
-            "fan_percent": "Fan {label} power",
-            "gpu_fan": "GPU {index} {gpu} fan",
+            "fan_percent": "Fan {label} PWM duty",
+            "gpu_fan": "GPU {index} {gpu} fan speed",
         },
         "translations/de.json": {
             "cpu_temp": "CPU-Temperatur",
             "board_temp": "Mainboard-Temperatur",
             "hw_temp": "Temperatur {chip} {label}",
             "fan_rpm": "L\u00fcfter {label} Drehzahl",
-            "fan_percent": "L\u00fcfter {label} Leistung",
-            "gpu_fan": "GPU {index} {gpu} L\u00fcfter",
+            "fan_percent": "L\u00fcfter {label} PWM-Ansteuerung",
+            "gpu_fan": "GPU {index} {gpu} L\u00fcfterdrehzahl",
         },
     }
     for filename, names in expected.items():
@@ -171,3 +171,24 @@ def test_icons_exist_for_the_new_keys_without_a_device_class():
     assert const.ENTITY_ICONS["fan_rpm"] == "mdi:fan"
     assert const.ENTITY_ICONS["fan_percent"] == "mdi:fan"
     assert const.ENTITY_ICONS["gpu_fan"] == "mdi:fan"
+
+
+def test_every_switch_says_status_and_names_say_what_they_measure():
+    """On/off is a status, not "Strom"; watts and PWM percent are not both "Leistung".
+
+    Before 0.5.0 the VM switch was called "Strom"/"Power", and the GPU's draw
+    in watts shared the word "Leistung" with a fan's PWM duty in percent.
+    """
+    for filename, status, power, pwm in (
+        ("translations/de.json", "Status", "Leistungsaufnahme", "PWM-Ansteuerung"),
+        ("translations/en.json", "Status", "power draw", "PWM duty"),
+        ("strings.json", "Status", "power draw", "PWM duty"),
+    ):
+        entity = _load(filename)["entity"]
+        for key in ("vm", "stack", "standalone_container"):
+            assert entity["switch"][key]["name"] == status, (filename, key)
+        assert entity["switch"]["container"]["name"].lower() == "{container} " + status.lower(), filename
+        assert entity["sensor"]["gpu_power"]["name"].endswith(power), filename
+        assert entity["sensor"]["fan_percent"]["name"].endswith(pwm), filename
+        names = [v["name"] for platform in entity.values() for v in platform.values()]
+        assert not any(word in name for name in names for word in ("Strom", "Power")), filename

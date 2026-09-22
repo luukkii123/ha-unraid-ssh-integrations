@@ -100,8 +100,8 @@ def test_child_devices_use_translatable_type_names_and_stable_identifiers():
 
 
 def test_switches_keep_each_standalone_container_on_its_own_device():
-    first = Container("alpha", "running", "example/a:latest", "", "")
-    second = Container("beta", "exited", "example/b:latest", "", "")
+    first = Container("alpha", "running", "example/a:latest", "", "", managed="dockerman")
+    second = Container("beta", "exited", "example/b:latest", "", "", managed="dockerman")
     snapshot = _snapshot(containers=(first, second), loose=(first, second))
     coordinator = _Coordinator(_Entry(), snapshot)
 
@@ -114,7 +114,9 @@ def test_switches_keep_each_standalone_container_on_its_own_device():
     for name in ("alpha", "beta"):
         entity = entities[f"container_{name}"]
         assert entity.device_info["identifiers"] == {("unraid_ssh", "entry-1_container_" + name)}
-        assert entity.name is None
+        # The device carries the container's name; the switch says what it
+        # switches -- "Status", on/off -- instead of repeating the device.
+        assert entity.translation_key == "standalone_container"
 
 
 def test_orphan_compose_container_stays_on_a_stack_device():
@@ -165,7 +167,7 @@ async def test_update_waits_for_fast_snapshot_then_registers_from_fast_listener(
     await setup_updates(None, entry, added.extend)
 
     assert added == []
-    container = Container("alpha", "running", "example/a:latest", "", "")
+    container = Container("alpha", "running", "example/a:latest", "", "", managed="dockerman")
     fast.data = _snapshot(containers=(container,), loose=(container,))
     for listener in tuple(fast.listeners):
         listener()

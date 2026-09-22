@@ -17,8 +17,9 @@ DOMAIN = 'unraid_ssh'
 
 
 def inventory():
-    containers = (Container('alpha_one', 'running', 'example/a', '', ''),
-                  Container('beta', 'exited', 'example/b', '', ''))
+    # Template containers: Unraid's Docker manager labels what it owns.
+    containers = (Container('alpha_one', 'running', 'example/a', '', '', managed='dockerman'),
+                  Container('beta', 'exited', 'example/b', '', '', managed='dockerman'))
     return replace(_snapshot(containers=containers, loose=containers,
         shares=(Share('Media Backup', 10, 20), Share('Media_Backup', 30, 40)),
         gpus=(Gpu(0, 'Example GPU', 10, 20, 100, 20, 40, 12),)),

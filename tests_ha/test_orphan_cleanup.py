@@ -25,54 +25,88 @@ async def poll(hass, entry, snapshot):
     await hass.async_block_till_done()
 
 
-async def test_absent_containers_keep_registry_and_device_after_grace(hass, monkeypatch, tmp_path, freezer):
+def stack_with_member(up=True):
+    """A stack folder with one canonical Compose member, running or down.
+
+    `docker compose down` removes the containers outright, so a stack that is
+    down has its folder and no containers at all -- not stopped members.
+    """
+    from custom_components.unraid_ssh.model import merge_stacks
+    from custom_components.unraid_ssh.parse import ComposeProject, Container, StackDir
+    base = inventory()
+    member = Container('stack-web-1', 'running', 'example/web', 'project', 'web', replica=1)
+    containers = (member, base.containers[1]) if up else (base.containers[1],)
+    projects = [ComposeProject('project', 'running(1)', 1, ('/stacks/My Stack/compose.yaml',))] if up else []
+    stacks, loose = merge_stacks([StackDir('/stacks/My Stack', 'My Stack', False)], projects, list(containers))
+    return replace(base, containers=containers, stacks=stacks, template_containers=loose)
+
+
+MEMBER = '_container_compose:["My Stack","web",1]'
+
+
+async def test_a_deleted_standalone_container_is_removed_after_grace(hass, monkeypatch, tmp_path, freezer):
+    """The one-offs of the real server: gone from `docker ps -a`, gone for good."""
     hass.config.config_dir = str(tmp_path)
     entry, _, _ = legacy(hass)
     await load(hass, monkeypatch, entry, inventory())
     try:
-        before = own_entities(hass, entry)
         device = lookup(hass, entry, '_container_beta')
         gone = without(inventory(), 'beta')
         await poll(hass, entry, gone)
-        freezer.tick(STALE_GRACE * 3)
+        freezer.tick(STALE_GRACE / 2)
         await poll(hass, entry, gone)
-        for suffix in ('_container_beta', '_update_beta'):
-            assert own_entities(hass, entry)[suffix] == before[suffix]
-        assert dr.async_get(hass).async_get(device.id) is not None
-        assert entry.runtime_data.stale_since == {}
+        assert '_container_beta' in own_entities(hass, entry)      # inside the window
+        freezer.tick(STALE_GRACE)
+        await poll(hass, entry, gone)
+        current = own_entities(hass, entry)
+        for suffix in ('_container_beta', '_update_beta', '_restart_container_beta'):
+            assert suffix not in current, suffix
+        assert dr.async_get(hass).async_get(device.id) is None
+        assert '_container_alpha_one' in current                     # still on the server
     finally:
         await hass.config_entries.async_unload(entry.entry_id)
 
 
-async def test_container_returns_to_existing_entity_after_long_absence(hass, monkeypatch, tmp_path, freezer):
+async def test_a_member_of_a_stack_that_is_down_is_kept_and_returns(hass, monkeypatch, tmp_path, freezer):
+    """Switching a stack off must not cost its members their entities.
+
+    Their labels (`always_on`), areas and entity ids hang on those registry
+    entries; a stack that comes back up has to find them where it left them.
+    """
     hass.config.config_dir = str(tmp_path)
     entry, _, _ = legacy(hass)
-    await load(hass, monkeypatch, entry, inventory())
+    await load(hass, monkeypatch, entry, stack_with_member())
     try:
-        before = own_entities(hass, entry)['_container_alpha_one']
-        await poll(hass, entry, without(inventory(), 'alpha_one'))
+        before = own_entities(hass, entry)[MEMBER]
+        await poll(hass, entry, stack_with_member(up=False))
         freezer.tick(STALE_GRACE * 3)
-        await poll(hass, entry, without(inventory(), 'alpha_one'))
+        await poll(hass, entry, stack_with_member(up=False))
+        assert own_entities(hass, entry)[MEMBER] == before
         assert hass.states.get(before.entity_id).state == 'unavailable'
-        await poll(hass, entry, inventory())
-        assert own_entities(hass, entry)['_container_alpha_one'] == before
+        await poll(hass, entry, stack_with_member())
+        assert own_entities(hass, entry)[MEMBER] == before
         assert hass.states.get(before.entity_id).state == 'on'
     finally:
         await hass.config_entries.async_unload(entry.entry_id)
 
 
-async def test_failed_docker_poll_never_removes_legacy_container(hass, monkeypatch, tmp_path, freezer):
+async def test_a_failed_docker_poll_removes_nothing_itself(hass, monkeypatch, tmp_path, freezer):
+    """A poll that could not read `docker` is no evidence a container is gone."""
     hass.config.config_dir = str(tmp_path)
     entry, _, _ = legacy(hass)
     await load(hass, monkeypatch, entry, inventory())
     try:
         gone = without(inventory(), 'beta')
-        await poll(hass, entry, gone)
+        failed = replace(gone, failed=frozenset({'docker'}))
+        await poll(hass, entry, failed)
         freezer.tick(STALE_GRACE * 3)
-        await poll(hass, entry, replace(gone, failed=frozenset({'docker'})))
-        await poll(hass, entry, gone)
+        await poll(hass, entry, failed)
         assert '_container_beta' in own_entities(hass, entry)
         assert '_update_beta' in own_entities(hass, entry)
+        # The clock only starts on a poll that could judge: a full window of
+        # successful polls is still owed before anything goes.
+        await poll(hass, entry, gone)
+        assert '_container_beta' in own_entities(hass, entry)
     finally:
         await hass.config_entries.async_unload(entry.entry_id)
 

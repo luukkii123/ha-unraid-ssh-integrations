@@ -14,13 +14,13 @@ Compose-Stacks und verliert nach Updates die VMs. SSH ist immer da.
 | --- | --- |
 | Server | CPU, RAM, Load, Uptime, Array-Status, Parity, Mover, je GPU, je Platte, je Share |
 | Temperaturen | Je Kanal aus `/sys/class/hwmon` ein Sensor — CPU, Mainboard, NVMe —, dazu die beiden festen Sensoren **CPU-Temperatur** und **Mainboard-Temperatur**, deren ID sich auch bei einem Hardwaretausch nicht ändert |
-| Lüfter | Je Lüfter **Drehzahl** in RPM und **Leistung** in Prozent (aus `pwm`, 0–255); beim GPU-Lüfter kommen die Prozent direkt von `nvidia-smi`. Nur Anzeige — die Integration schreibt nie nach `pwm` |
-| Schalter | Docker-Container, Compose-Stacks (über das Compose-Manager-Plugin) und VMs — je Container, Stack oder VM ein/aus |
+| Lüfter | Je Lüfter **Drehzahl** in RPM und **PWM-Ansteuerung** in Prozent (aus `pwm`, 0–255); beim GPU-Lüfter kommt die **Lüfterdrehzahl** in Prozent direkt von `nvidia-smi`. Nur Anzeige — die Integration schreibt nie nach `pwm` |
+| Schalter | Docker-Container, Compose-Stacks (über das Compose-Manager-Plugin) und VMs — je Container, Stack oder VM ein Schalter **Status** (an/aus) |
 | Neustart | Native Docker-/Compose-Restartbuttons; keine Stop/Start-Kette |
 | Updates | `update`-Entität je Container mit Registry-Digest, mit „Installieren" — auch für Compose-Container, die Unraids eigene Prüfung nicht sieht; dazu ein Zähler und ein Knopf „Jetzt prüfen" |
 
-Diese Fassung bereitet **0.3.0** vor. Der bisher veröffentlichte Stand ist
-**0.1.0**; HACS installiert Releases, nicht automatisch den Entwicklungszweig.
+Diese Fassung ist **0.5.0**. HACS installiert Releases, nicht automatisch den
+Entwicklungszweig.
 
 ### Mainboard-Temperaturen brauchen einen Treiber
 
@@ -128,12 +128,36 @@ behalten ihre vorhandenen INSTALL-Fähigkeitsprüfungen.
 
 ## Aufräumen und Bestandsschutz
 
-Container-Schalter, Container-Updates und Container-Restartbuttons werden nicht
-automatisch wegen Abwesenheit gelöscht. Dies schützt alte Entity-IDs während der
-Identitätsumstellung. Eine spätere Bereinigung benötigt einen ausdrücklichen
-Registry- und Verbraucherabgleich. Auch leere alte Containergeräte bleiben erhalten.
-Für andere bekannte Entitätstypen gilt weiterhin die fünfminütige Karenz mit
-Prüfung erfolgreicher Quellabschnitte. Serverentities bleiben geschützt.
+Seit **0.5.0** gilt für alle Entitätstypen dieselbe Regel: Was in jeder
+erfolgreichen Abfrage fünf Minuten lang fehlt, wird entfernt — aber nur, wenn
+der Abschnitt, der es hätte melden müssen, gelesen werden konnte. Ein Gerät,
+auf das danach nichts mehr zeigt, verschwindet mit; das gilt auch für leere
+Gerätehüllen aus älteren Versionen.
+
+- **Einmal-Container** (`docker run` ohne Compose-Projekt und ohne Label
+  `net.unraid.docker.managed`, erkennbar an Namen wie `adoring_dirac`)
+  bekommen gar keine Entität mehr. Bis 0.4.0 hinterließ jeder, den eine
+  Abfrage zufällig erwischte, dauerhaft einen Schalter und einen Neustartknopf.
+- **Ein ausgeschalteter Stack verliert nichts.** `docker compose down`
+  entfernt die Container ganz; solange der Stack selbst existiert, bleiben die
+  Entitäten seiner Mitglieder samt Labels, Bereich und ID erhalten.
+- **Alte Namensaliase** aus der Zeit vor 0.4.0 bleiben, solange ein Container
+  dieses Namens läuft.
+- Serverentities und unbekannte Formen werden nie entfernt.
+
+## Namen ab 0.5.0
+
+Schalter heißen **Status** (an/aus), statt den Gerätenamen zu wiederholen oder
+„Strom" zu sagen. Die GPU-Leistung in Watt heißt **Leistungsaufnahme**, der
+Lüfteranteil in Prozent **PWM-Ansteuerung** — bis 0.4.0 hießen beide
+„Leistung". Dazu **Systemlast (1 min)**, **Standby** für schlafende Platten,
+**Belegter/Freier Speicher** bei Shares, **Betriebszustand** bei VMs und
+**Neustart** bei den Knöpfen. Bestehende `entity_id`s ändert Home Assistant
+dabei nicht von selbst; nur neu angelegte Entitäten tragen die neuen Wörter.
+
+Die Rohkanäle **Tctl** und **SYSTIN** sind ab Werk aus: dieselben Werte
+zeigen schon **CPU-Temperatur** und **Mainboard-Temperatur**. Neu ab Werk an
+ist der NVMe-Controllersensor (**Sensor 2**), der wärmer misst als `Composite`.
 
 **Installationsgrenze:** Der Liveabgleich vom 21.09.2026 zeigt bereits einzelne
 Containergeräte, während der lokale Ausgangsstand `d60b324` freie Container noch
@@ -260,6 +284,16 @@ entfernt, darunter Schalter längst gelöschter Test-Container; alle 44 zu
 dem Zeitpunkt eingeschalteten Schalter behielten ihre Entity-ID, das
 Systemprotokoll blieb ohne Eintrag von `unraid_ssh`. Ein Stack-Schalter
 oder Update-Install ist mit 0.3.0 weiterhin nicht produktiv ausgelöst worden.
+
+## Geprüft – 0.5.0, 22.09.2026
+
+187 Python-Tests und 113 Tests mit Home Assistant 2026.9.2 bestanden, die
+113 HA-Tests zusätzlich mit 2026.7.0. Neu abgedeckt: Einmal-Container ohne
+Eigentümer, ein Compose-Projekt ohne Unraid-Label (Gegenprobe), Entfernen
+gelöschter Einzelcontainer nach der Karenz, Erhalt der Mitglieder eines
+ausgeschalteten Stacks, Erhalt alter Aliase laufender Container, ein
+fehlgeschlagener Docker-Abschnitt entfernt nichts. Statische
+UI-/Übersetzungsprüfung ohne Verstoß.
 
 ## Geprüft – 0.4.0, 21.09.2026
 

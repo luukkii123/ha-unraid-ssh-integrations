@@ -927,7 +927,7 @@ paperless-db-1	running	synthetic-fixture-value:17	paperless	db
 paperless-broker-1	running	redis:8	paperless	broker
 LANCache-Prefill	running	ghcr.io/ich777/lancache-prefill	lancache	lancache-prefill
 buschfunk-attrappe-1	running	buschfunk-attrappe	buschfunk	attrappe
-buschfunk-vorschau	running	nginx:alpine		
+buschfunk-vorschau	running	nginx:alpine					dockerman
 claude-station	exited	claude-station-claude-station	claude-station	claude-station
 gps-bridge	running	gps_bridge-gps-bridge	gps_bridge	gps-bridge
 @@@ icons

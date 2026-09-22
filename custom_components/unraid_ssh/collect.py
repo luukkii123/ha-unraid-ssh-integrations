@@ -25,7 +25,12 @@ _DOCKER_FORMAT = (
     '{{.Names}}\\t{{.State}}\\t{{.Image}}\\t'
     '{{.Label "com.docker.compose.project"}}\\t{{.Label "com.docker.compose.service"}}\\t'
     '{{json (.Label "net.unraid.docker.icon")}}\\t'
-    '{{.Label "com.docker.compose.container-number"}}'
+    '{{.Label "com.docker.compose.container-number"}}\\t'
+    # Unraid's Docker manager stamps this on everything it owns, template
+    # containers included. It is the only label that is always there: the icon
+    # label is missing on most containers, so it cannot stand in for it. What
+    # carries neither this nor a Compose project is a one-off `docker run`.
+    '{{.Label "net.unraid.docker.managed"}}'
 )
 _ICON_METADATA_PATH = "/var/local/emhttp/plugins/dynamix.docker.manager/docker.json"
 _ICON_EMHTTP_ROOT = "/usr/local/emhttp"

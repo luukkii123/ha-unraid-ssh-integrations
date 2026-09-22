@@ -1,15 +1,21 @@
-"""Prune non-container entities after the successful-poll grace period.
+"""Prune entities after the successful-poll grace period.
 
-Container controls, updates and restarts are deliberately preserved during
-identity migration. Removing their consumer references requires an explicit
-registry/consumer audit, not a missing Docker name. Other entity types keep
-their existing section-success and grace-period protections. The clocks are
-runtime-only; reloading an entry resets them without removing anything.
+Every entity type is judged the same way: absent from every successful poll
+for `STALE_GRACE`, and only once the section that would have reported it
+parsed. Container controls, updates and restarts were exempt until 0.5.0,
+while container identities were migrating. The exemption outlived its reason
+and cost half the device list: a one-off `docker run` caught mid-poll left a
+switch and a restart button behind for good, and nothing ever removed them.
+One exception stays, for a different reason: members of a stack that still
+exists are kept while the stack is down (`_container_still_owned`).
+The clocks are runtime-only; reloading an entry resets them without removing
+anything.
 """
 
 from __future__ import annotations
 
 from datetime import datetime
+import json
 import logging
 
 from homeassistant.core import HomeAssistant, callback
@@ -28,14 +34,14 @@ _LOGGER = logging.getLogger(__name__)
 #: judged at all. A failed section means the server told us nothing about that
 #: kind of thing this poll -- not that the thing is gone.
 _ENTITY_SECTIONS: tuple[tuple[tuple[str, ...], frozenset[str]], ...] = (
-    (("container_", "update_"), frozenset({"docker"})),
+    (("container_", "update_", "restart_container_"), frozenset({"docker"})),
     # A stack can come from a compose.manager folder, from `docker compose ls`
     # or from a container's project label alone, so all three have to be
     # readable before a missing stack means anything. The spec asks only for
     # `compose` and `stacks`; `docker` is added because a stack that exists
     # purely through its containers' labels would otherwise vanish from the
     # snapshot whenever `docker ps` fails.
-    (("stack_",), frozenset({"docker", "compose", "stacks"})),
+    (("stack_", "restart_stack_"), frozenset({"docker", "compose", "stacks"})),
     (("vm_", "vm_state_"), frozenset({"vms"})),
     (("disk_temp_", "disk_usage_", "disk_status_", "disk_spundown_"), frozenset({"disks"})),
     (("share_used_", "share_free_"), frozenset({"shares"})),
@@ -65,6 +71,34 @@ def _sections(table: tuple[tuple[tuple[str, ...], frozenset[str]], ...], suffix:
     and the cost of being wrong is asymmetric.
     """
     return next((sections for prefixes, sections in table if suffix.startswith(prefixes)), None)
+
+
+_CONTAINER_PREFIXES: tuple[str, ...] = ("restart_container_", "container_", "update_")
+
+
+def _container_still_owned(suffix: str, snapshot: Snapshot) -> bool:
+    """Whether a container-shaped key still has an owner, even with no container.
+
+    Switching a stack off runs `docker compose down`, which removes its
+    containers outright -- they are gone from `docker ps -a`, not stopped. An
+    absent member of a stack that still exists is therefore a stack that is
+    down, not an orphan: deleting it would cost its labels, area and entity id
+    the next time the stack comes up. The canonical key names its stack, so
+    that is checked. A name-shaped key (a standalone container, or a legacy
+    alias of a Compose container from before 0.4.0) is owned exactly while a
+    container of that name exists -- a deleted standalone container really is
+    gone from `docker ps -a`.
+    """
+    body = next((suffix.removeprefix(p) for p in _CONTAINER_PREFIXES if suffix.startswith(p)), None)
+    if body is None:
+        return False
+    if body.startswith("compose:"):
+        try:
+            owner = json.loads(body.removeprefix("compose:"))[0]
+        except (ValueError, IndexError, TypeError):
+            return False
+        return any(stack_key(stack) == owner for stack in snapshot.stacks)
+    return any(container.name == body for container in snapshot.containers)
 
 
 def expected_keys(entry: UnraidConfigEntry, snapshot: Snapshot) -> set[str]:
@@ -127,15 +161,14 @@ def async_prune_stale(hass: HomeAssistant, entry: UnraidConfigEntry) -> None:
         if item.platform != DOMAIN:
             continue
         unique_id = item.unique_id
-        # Container identities are undergoing a conservative transition. Keep
-        # old consumer references until an explicit registry/consumer audit.
-        if unique_id.removeprefix(prefix).startswith(("container_", "update_", "restart_container_")):
-            continue
         if unique_id in expected:
             continue                       # back, or never gone: the clock is dropped
-        sections = _sections(_ENTITY_SECTIONS, unique_id.removeprefix(prefix))
+        suffix = unique_id.removeprefix(prefix)
+        sections = _sections(_ENTITY_SECTIONS, suffix)
         if sections is None:
             continue
+        if not sections & snapshot.failed and _container_still_owned(suffix, snapshot):
+            continue                       # a stack that is down, not an orphan
         if sections & snapshot.failed:
             # Not judged this poll. The clock is neither started nor reset --
             # a server that cannot answer must not buy an entity more time,
@@ -151,24 +184,38 @@ def async_prune_stale(hass: HomeAssistant, entry: UnraidConfigEntry) -> None:
         removed.append((item.entity_id, item.device_id))
     runtime.stale_since = clocks
 
-    if not removed:
-        return
     minutes = int(STALE_GRACE.total_seconds() // 60)
     for entity_id, _ in removed:
         _LOGGER.info("unraid_ssh: removed %s (absent for %d min)", entity_id, minutes)
+    _remove_empty_devices(hass, entry, registry)
+
+
+def _remove_empty_devices(hass: HomeAssistant, entry: UnraidConfigEntry, registry: er.EntityRegistry) -> None:
+    """Drop our devices that nothing points at and the snapshot no longer has.
+
+    This runs on every successful poll, not only after an entity removal in
+    the same pass: a device whose last entity went some other way -- a manual
+    delete, or an older version that removed entities but kept their device --
+    would otherwise stay forever. Thirty-two such empty shells of one-off
+    containers stood in the device list of the real server before 0.5.0.
+    `can_remove_device` is the same test the Home Assistant UI asks before a
+    manual delete: never the server device, never a device the snapshot still
+    accounts for, never while the section that would report it failed.
+    """
+    runtime = entry.runtime_data
     devices = dr.async_get(hass)
-    for device_id in {device_id for _, device_id in removed if device_id}:
-        if device_id == runtime.server_device_id:
-            continue
-        device = devices.async_get(device_id)
-        if device is None or device.config_entries != {entry.entry_id}:
+    for device in dr.async_entries_for_config_entry(devices, entry.entry_id):
+        if device.id == runtime.server_device_id or device.config_entries != {entry.entry_id}:
             continue
         # Include disabled entries and other integrations: an empty device is
         # one nothing points at any more. The shared "standalone containers"
         # device may fall too -- it is recreated the moment one reappears.
-        if er.async_entries_for_device(registry, device_id, include_disabled_entities=True):
+        if er.async_entries_for_device(registry, device.id, include_disabled_entities=True):
             continue
-        devices.async_remove_device(device_id)
+        if not can_remove_device(entry, device):
+            continue
+        devices.async_remove_device(device.id)
+        _LOGGER.info("unraid_ssh: removed empty device %s", device.name)
 
 
 def can_remove_device(entry: UnraidConfigEntry, device: dr.DeviceEntry) -> bool:

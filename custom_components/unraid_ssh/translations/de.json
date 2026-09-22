@@ -71,7 +71,7 @@
     "sensor": {
       "cpu_percent": {"name": "CPU-Auslastung"},
       "ram_percent": {"name": "RAM-Auslastung"},
-      "load_1": {"name": "Load (1 min)"},
+      "load_1": {"name": "Systemlast (1 min)"},
       "uptime": {"name": "Letzter Start"},
       "array_state": {"name": "Array-Status", "state": {"started": "Gestartet", "stopped": "Gestoppt", "starting": "Startet", "stopping": "Stoppt", "unknown": "Unbekannt"}},
       "parity_progress": {"name": "Parity-Check-Fortschritt"},
@@ -80,36 +80,37 @@
       "board_temp": {"name": "Mainboard-Temperatur"},
       "hw_temp": {"name": "Temperatur {chip} {label}"},
       "fan_rpm": {"name": "Lüfter {label} Drehzahl"},
-      "fan_percent": {"name": "Lüfter {label} Leistung"},
+      "fan_percent": {"name": "Lüfter {label} PWM-Ansteuerung"},
       "updates_available": {"name": "Container mit Update"},
-      "share_used": {"name": "Belegt"},
-      "share_free": {"name": "Frei"},
+      "share_used": {"name": "Belegter Speicher"},
+      "share_free": {"name": "Freier Speicher"},
       "gpu_util": {"name": "GPU {index} {gpu} Auslastung"},
       "gpu_vram": {"name": "GPU {index} {gpu} VRAM-Belegung"},
       "gpu_temp": {"name": "GPU {index} {gpu} Temperatur"},
-      "gpu_power": {"name": "GPU {index} {gpu} Leistung"},
-      "gpu_fan": {"name": "GPU {index} {gpu} Lüfter"},
+      "gpu_power": {"name": "GPU {index} {gpu} Leistungsaufnahme"},
+      "gpu_fan": {"name": "GPU {index} {gpu} Lüfterdrehzahl"},
       "disk_temp": {"name": "Temperatur"},
       "disk_usage": {"name": "Belegung"},
       "disk_status": {"name": "Status", "state": {"ok": "OK", "new": "Neu", "disabled": "Deaktiviert", "invalid": "Ungültig", "missing": "Fehlt", "not_present": "Nicht vorhanden", "unknown": "Unbekannt"}},
-      "vm_state": {"name": "Zustand", "state": {"running": "Läuft", "shut_off": "Aus", "paused": "Pausiert", "in_shutdown": "Fährt herunter", "crashed": "Abgestürzt", "pmsuspended": "Ruhezustand", "idle": "Leerlauf", "unknown": "Unbekannt"}}
+      "vm_state": {"name": "Betriebszustand", "state": {"running": "Läuft", "shut_off": "Aus", "paused": "Pausiert", "in_shutdown": "Fährt herunter", "crashed": "Abgestürzt", "pmsuspended": "Ruhezustand", "idle": "Leerlauf", "unknown": "Unbekannt"}}
     },
     "binary_sensor": {
       "array_started": {"name": "Array gestartet"},
       "parity_running": {"name": "Parity-Check läuft"},
       "mover_active": {"name": "Mover aktiv"},
-      "disk_spundown": {"name": "Schlafend"}
+      "disk_spundown": {"name": "Standby"}
     },
     "button": {
-      "container_restart": {"name": "{container} neu starten"},
-      "standalone_restart": {"name": "Neu starten"},
-      "stack_restart": {"name": "Neu starten"},
+      "container_restart": {"name": "{container} Neustart"},
+      "standalone_restart": {"name": "Neustart"},
+      "stack_restart": {"name": "Neustart"},
       "check_updates": {"name": "Updates jetzt prüfen"}
     },
     "switch": {
-      "container": {"name": "{container}"},
-      "stack": {"name": "Stack"},
-      "vm": {"name": "Strom"}
+      "container": {"name": "{container} Status"},
+      "standalone_container": {"name": "Status"},
+      "stack": {"name": "Status"},
+      "vm": {"name": "Status"}
     },
     "update": {
       "standalone_update": {"name": "Update"},

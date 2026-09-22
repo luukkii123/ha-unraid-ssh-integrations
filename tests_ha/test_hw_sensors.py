@@ -64,15 +64,19 @@ async def test_only_the_meaningful_channels_are_enabled_by_default(hass, monkeyp
     entry = await setup(hass, monkeypatch, tmp_path, snapshot_with_sensors())
     try:
         items = own_entities(hass, entry)
+        # Tctl and SYSTIN are what `cpu_temp` and `board_temp` read: shown
+        # there under a short name, so their raw channels start disabled
+        # rather than repeat the same value under a second name.
         enabled = {
-            "_temp_k10temp_0000_00_18_3_temp1",       # Tctl
-            "_temp_nct6798_nct6775_656_temp1",        # SYSTIN
             "_temp_nct6798_nct6775_656_temp2",        # CPUTIN
             "_temp_nvme_nvme0_temp1",                 # Composite
+            "_temp_nvme_nvme0_temp3",                 # Sensor 2, the controller
             "_fan_nct6798_nct6775_656_fan4_rpm",      # 874 RPM
             "_fan_nct6798_nct6775_656_fan6_rpm",      # 3409 RPM
         }
         disabled = {
+            "_temp_k10temp_0000_00_18_3_temp1",       # Tctl  = cpu_temp
+            "_temp_nct6798_nct6775_656_temp1",        # SYSTIN = board_temp
             "_temp_k10temp_0000_00_18_3_temp3",       # Tccd1
             "_temp_nvme_nvme0_temp2",                 # Sensor 1
             "_temp_nct6798_nct6775_656_temp3",        # AUXTIN0
@@ -90,17 +94,17 @@ async def test_only_the_meaningful_channels_are_enabled_by_default(hass, monkeyp
 async def test_values_units_and_attributes_match_the_recording(hass, monkeypatch, tmp_path):
     entry = await setup(hass, monkeypatch, tmp_path, snapshot_with_sensors())
     try:
-        tctl = state_of(hass, entry, "temp_k10temp_0000_00_18_3_temp1")
-        assert tctl.state == "71.8"
-        assert tctl.attributes["unit_of_measurement"] == UnitOfTemperature.CELSIUS
-        assert tctl.attributes["device_class"] == SensorDeviceClass.TEMPERATURE
-        assert tctl.attributes["state_class"] == SensorStateClass.MEASUREMENT
+        cputin = state_of(hass, entry, "temp_nct6798_nct6775_656_temp2")
+        assert cputin.state == "57.0"
+        assert cputin.attributes["unit_of_measurement"] == UnitOfTemperature.CELSIUS
+        assert cputin.attributes["device_class"] == SensorDeviceClass.TEMPERATURE
+        assert cputin.attributes["state_class"] == SensorStateClass.MEASUREMENT
         # Precision lives in the registry options, not in the state attributes.
-        options = own_entities(hass, entry)["_temp_k10temp_0000_00_18_3_temp1"].options
+        options = own_entities(hass, entry)["_temp_nct6798_nct6775_656_temp2"].options
         assert options["sensor"]["suggested_display_precision"] == 1
-        assert (tctl.attributes["chip"], tctl.attributes["channel"], tctl.attributes["label"]) == (
-            "k10temp", "temp1", "Tctl")
-        assert tctl.name == "Example Unraid Temperature CPU Tctl"
+        assert (cputin.attributes["chip"], cputin.attributes["channel"], cputin.attributes["label"]) == (
+            "nct6798", "temp2", "CPUTIN")
+        assert cputin.name == "Example Unraid Temperature Mainboard CPUTIN"
 
         rpm = state_of(hass, entry, "fan_nct6798_nct6775_656_fan4_rpm")
         assert rpm.state == "874"
@@ -113,7 +117,7 @@ async def test_values_units_and_attributes_match_the_recording(hass, monkeypatch
         assert percent.state == "90"                 # 229 / 255
         assert percent.attributes["unit_of_measurement"] == PERCENTAGE
         assert (percent.attributes["pwm"], percent.attributes["pwm_mode"]) == (229, "auto")
-        assert percent.name == "Example Unraid Fan 4 power"
+        assert percent.name == "Example Unraid Fan 4 PWM duty"
 
         # The NVMe label alone ("Composite") says nothing; the chip name does.
         composite = state_of(hass, entry, "temp_nvme_nvme0_temp1")
@@ -141,12 +145,12 @@ async def test_a_manually_driven_fan_says_so(hass, monkeypatch, tmp_path):
 async def test_a_channel_that_leaves_the_plausible_range_keeps_its_entity(hass, monkeypatch, tmp_path):
     entry = await setup(hass, monkeypatch, tmp_path, snapshot_with_sensors())
     try:
-        tctl = next(s for s in RECORDED if s.label == "Tctl")
-        broken = [replace(tctl, value=-59.0) if s is tctl else s for s in RECORDED]
+        cputin = next(s for s in RECORDED if s.label == "CPUTIN")
+        broken = [replace(cputin, value=-59.0) if s is cputin else s for s in RECORDED]
         entry.runtime_data.coordinator.async_set_updated_data(snapshot_with_sensors(broken))
         await hass.async_block_till_done()
-        assert "_temp_k10temp_0000_00_18_3_temp1" in own_entities(hass, entry)
-        assert state_of(hass, entry, "temp_k10temp_0000_00_18_3_temp1").state == "unknown"
+        assert "_temp_nct6798_nct6775_656_temp2" in own_entities(hass, entry)
+        assert state_of(hass, entry, "temp_nct6798_nct6775_656_temp2").state == "unknown"
     finally:
         await hass.config_entries.async_unload(entry.entry_id)
 
@@ -156,7 +160,7 @@ async def test_a_channel_that_disappears_goes_unavailable(hass, monkeypatch, tmp
     try:
         entry.runtime_data.coordinator.async_set_updated_data(snapshot_with_sensors(()))
         await hass.async_block_till_done()
-        assert state_of(hass, entry, "temp_k10temp_0000_00_18_3_temp1").state == "unavailable"
+        assert state_of(hass, entry, "temp_nct6798_nct6775_656_temp2").state == "unavailable"
     finally:
         await hass.config_entries.async_unload(entry.entry_id)
 
@@ -189,6 +193,6 @@ async def test_the_gpu_fan_exists_only_where_the_driver_reports_one(
             assert state.state == expected
             assert state.attributes["unit_of_measurement"] == PERCENTAGE
             assert state.attributes["icon"] == "mdi:fan"
-            assert state.name == "Example Unraid GPU 0 Example GPU fan"
+            assert state.name == "Example Unraid GPU 0 Example GPU fan speed"
     finally:
         await hass.config_entries.async_unload(entry.entry_id)

@@ -93,19 +93,24 @@ async def test_native_stack_restart_refreshes_on_error_and_has_no_fake_fallback(
     await hass.config_entries.async_unload(entry.entry_id)
 
 
-async def test_old_entities_and_devices_are_not_deleted_during_identity_transition(hass, monkeypatch, tmp_path, freezer):
+async def test_a_legacy_alias_outlives_the_grace_while_its_container_lives(hass, monkeypatch, tmp_path, freezer):
+    """The identity migration's promise, kept past the old blanket exemption.
+
+    An automation may still point at the name-shaped alias from before 0.4.0.
+    As long as a container of that name runs, the alias is not an orphan --
+    whatever the canonical twin next to it says.
+    """
     hass.config.config_dir = str(tmp_path)
     entry, _, old = legacy(hass)
-    before = own_entities(hass, entry)
-    await load(hass, monkeypatch, entry, inventory())
-    empty = replace(inventory(), containers=(), template_containers=())
-    entry.runtime_data.coordinator.async_set_updated_data(empty)
-    freezer.tick(STALE_GRACE * 3)
-    entry.runtime_data.coordinator.async_set_updated_data(empty)
-    await hass.async_block_till_done()
-    for suffix in ('_container_alpha_one', '_update_alpha_one', '_container_beta', '_update_beta'):
-        assert own_entities(hass, entry)[suffix].entity_id == before[suffix].entity_id
-    assert dr.async_get(hass).async_get(old.alpha.id) is not None
+    dev = old.device('_stack_Stable')
+    alias = old.entity('switch', '_container_old-web', dev)
+    await load(hass, monkeypatch, entry, compose_snapshot())
+    for _ in range(2):
+        entry.runtime_data.coordinator.async_set_updated_data(compose_snapshot())
+        await hass.async_block_till_done()
+        freezer.tick(STALE_GRACE * 3)
+    assert er.async_get(hass).async_get(alias.entity_id) is not None
+    assert dr.async_get(hass).async_get(dev.id) is not None
     await hass.config_entries.async_unload(entry.entry_id)
 
 

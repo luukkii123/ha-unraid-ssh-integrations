@@ -391,6 +391,20 @@ class Container:
     service: str               # com.docker.compose.service label, "" for template containers
     icon: str | None = None     # decoded net.unraid.docker.icon label
     replica: int | None = None  # com.docker.compose.container-number, never inferred from name
+    managed: str = ""           # net.unraid.docker.managed label, "" for anything Unraid does not own
+
+
+def container_is_owned(container: Container) -> bool:
+    """Whether anything on the server claims this container as its own.
+
+    A Compose project or Unraid's Docker manager both count. A container with
+    neither was started by hand -- `docker run` without labels -- and carries
+    one of Docker's generated `adjective_scientist` names. Those live for
+    seconds to minutes; catching one mid-poll used to leave a switch and a
+    restart button behind for good, and half this server's Home Assistant
+    devices were such leftovers before 0.5.0.
+    """
+    return bool(container.project or container.managed)
 
 
 def parse_containers(text: str) -> list[Container]:
@@ -417,6 +431,7 @@ def parse_containers(text: str) -> list[Container]:
                 service=parts[4],
                 icon=icon,
                 replica=int(parts[6]) if len(parts) > 6 and parts[6].isascii() and parts[6].isdigit() and int(parts[6]) > 0 else None,
+                managed=parts[7].strip() if len(parts) > 7 else "",
             )
         )
     return out

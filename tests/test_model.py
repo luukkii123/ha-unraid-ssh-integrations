@@ -117,7 +117,7 @@ def test_merge_stacks_attaches_containers_and_keeps_downed_stacks():
     containers = [
         parse.Container("buschfunk-web-1", "running", "img", "buschfunk", "web"),
         parse.Container("buschfunk-kern-1", "running", "img", "buschfunk", "kern"),
-        parse.Container("buschfunk-vorschau", "running", "nginx:alpine", "", ""),
+        parse.Container("buschfunk-vorschau", "running", "nginx:alpine", "", "", managed="dockerman"),
     ]
     stacks, loose = model.merge_stacks(dirs, projects, containers)
     by_name = {s.name: s for s in stacks}
@@ -171,7 +171,7 @@ def test_merge_stacks_keeps_containers_of_an_unknown_project():
     containers = [
         parse.Container("ghost-web-1", "running", "img", "ghost", "web"),
         parse.Container("ghost-db-1", "exited", "img", "ghost", "db"),
-        parse.Container("standalone", "running", "nginx:alpine", "", ""),
+        parse.Container("standalone", "running", "nginx:alpine", "", "", managed="dockerman"),
     ]
     stacks, loose = model.merge_stacks([], [], containers)
     assert len(stacks) == 1
@@ -311,7 +311,7 @@ def test_container_updatable_only_where_the_update_command_can_work():
     cannot be updated that way. Offering install there would produce a button
     that always fails.
     """
-    template = parse.Container("buschfunk-vorschau", "running", "nginx:alpine", "", "")
+    template = parse.Container("buschfunk-vorschau", "running", "nginx:alpine", "", "", managed="dockerman")
     assert model.container_updatable(template, None) is True
 
     web = parse.Container("buschfunk-web-1", "running", "img", "buschfunk", "web")
@@ -393,3 +393,32 @@ def test_fixed_server_temperatures_ignore_an_unconnected_input(fixture):
     sections = collect.split_output(fixture("full_output.txt"))
     sections["sensors"] = "nct6798\tnct6775.656\ttemp1\tSYSTIN\t0\t\t\n"
     assert model.board_temp(model.build_snapshot(sections, None)) is None
+
+
+def test_merge_stacks_drops_hand_started_one_offs():
+    """A `docker run` without labels is nobody's container and gets no entity.
+
+    Fourteen such one-offs (`adoring_dirac`, `funny_einstein`, ...) left a
+    switch and a restart button behind on the real server before 0.5.0.
+    """
+    containers = [
+        parse.Container("adoring_dirac", "running", "python:3", "", ""),
+        parse.Container("template", "running", "nginx:alpine", "", "", managed="dockerman"),
+    ]
+    stacks, loose = model.merge_stacks([], [], containers)
+    assert stacks == ()
+    assert [c.name for c in loose] == ["template"]
+
+
+def test_project_without_unraid_label_is_kept():
+    """Counter-check: a Compose project outside Unraid's manager still counts.
+
+    `openai_tunnel` runs by plain `docker compose` and carries no
+    `net.unraid.docker.managed` label -- filtering on that label alone would
+    have deleted four real containers.
+    """
+    tunnel = parse.Container("openai_tunnel-mcp-gateway-1", "running", "img", "openai_tunnel", "mcp-gateway")
+    assert parse.container_is_owned(tunnel)
+    stacks, loose = model.merge_stacks([], [], [tunnel])
+    assert [c.name for s in stacks for c in s.containers] == ["openai_tunnel-mcp-gateway-1"]
+    assert loose == ()

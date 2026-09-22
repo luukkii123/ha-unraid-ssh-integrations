@@ -145,8 +145,12 @@ def merge_stacks(
     for container in containers:
         if container.project:
             by_project.setdefault(container.project, []).append(container)
-        else:
+        elif parse.container_is_owned(container):
             loose.append(container)
+        # Else: a hand-started `docker run` with no project and no Unraid
+        # manager label. It gets no entity at all, so nothing has to be
+        # cleaned up after it -- the grace period in `prune` is the net that
+        # catches whatever still slips through, not the first line of defence.
 
     matched = _match_projects(stack_dirs, projects)
     stacks: list[Stack] = []
@@ -245,7 +249,13 @@ def build_snapshot(sections: dict[str, str], previous: Snapshot | None) -> Snaps
     load = _section(sections, "load", parse.parse_load, failed, None)
     gpus = tuple(_section(sections, "gpu", parse.parse_gpus, failed, []))
     sensors = tuple(_section(sections, "sensors", parse.parse_sensors, failed, []))
-    containers = _section(sections, "docker", parse.parse_containers, failed, [])
+    # Filtered once, here, so that `merge_stacks`, `snapshot.containers` and
+    # every platform that walks either of them see the same inventory. A
+    # hand-started container that reached only one of the two would still get
+    # an entity from that one -- which is how the restart buttons of fourteen
+    # long-gone one-offs outlived their switches.
+    containers = [c for c in _section(sections, "docker", parse.parse_containers, failed, [])
+                  if parse.container_is_owned(c)]
     icon_sources = _section(sections, "icons", parse_icon_metadata, failed, {})
     icons_valid = "icons" not in failed
     projects = _section(sections, "compose", parse.parse_compose_ls, failed, [])

@@ -88,7 +88,7 @@
     "sensor": {
       "cpu_percent": {"name": "CPU usage"},
       "ram_percent": {"name": "Memory usage"},
-      "load_1": {"name": "Load (1 min)"},
+      "load_1": {"name": "System load (1 min)"},
       "uptime": {"name": "Last boot"},
       "array_state": {
         "name": "Array state",
@@ -100,15 +100,15 @@
       "board_temp": {"name": "Board temperature"},
       "hw_temp": {"name": "Temperature {chip} {label}"},
       "fan_rpm": {"name": "Fan {label} speed"},
-      "fan_percent": {"name": "Fan {label} power"},
+      "fan_percent": {"name": "Fan {label} PWM duty"},
       "updates_available": {"name": "Containers with updates"},
-      "share_used": {"name": "Used"},
-      "share_free": {"name": "Free"},
+      "share_used": {"name": "Used space"},
+      "share_free": {"name": "Free space"},
       "gpu_util": {"name": "GPU {index} {gpu} utilization"},
       "gpu_vram": {"name": "GPU {index} {gpu} VRAM usage"},
       "gpu_temp": {"name": "GPU {index} {gpu} temperature"},
-      "gpu_power": {"name": "GPU {index} {gpu} power"},
-      "gpu_fan": {"name": "GPU {index} {gpu} fan"},
+      "gpu_power": {"name": "GPU {index} {gpu} power draw"},
+      "gpu_fan": {"name": "GPU {index} {gpu} fan speed"},
       "disk_temp": {"name": "Temperature"},
       "disk_usage": {"name": "Usage"},
       "disk_status": {
@@ -116,7 +116,7 @@
         "state": {"ok": "OK", "new": "New", "disabled": "Disabled", "invalid": "Invalid", "missing": "Missing", "not_present": "Not present", "unknown": "Unknown"}
       },
       "vm_state": {
-        "name": "State",
+        "name": "Operating state",
         "state": {"running": "Running", "shut_off": "Shut off", "paused": "Paused", "in_shutdown": "Shutting down", "crashed": "Crashed", "pmsuspended": "Suspended", "idle": "Idle", "unknown": "Unknown"}
       }
     },
@@ -124,18 +124,19 @@
       "array_started": {"name": "Array started"},
       "parity_running": {"name": "Parity check running"},
       "mover_active": {"name": "Mover active"},
-      "disk_spundown": {"name": "Spun down"}
+      "disk_spundown": {"name": "Standby"}
     },
     "button": {
-      "container_restart": {"name": "Restart {container}"},
+      "container_restart": {"name": "{container} restart"},
       "standalone_restart": {"name": "Restart"},
       "stack_restart": {"name": "Restart"},
       "check_updates": {"name": "Check for updates"}
     },
     "switch": {
-      "container": {"name": "{container}"},
-      "stack": {"name": "Stack"},
-      "vm": {"name": "Power"}
+      "container": {"name": "{container} status"},
+      "standalone_container": {"name": "Status"},
+      "stack": {"name": "Status"},
+      "vm": {"name": "Status"}
     },
     "update": {
       "standalone_update": {"name": "Update"},

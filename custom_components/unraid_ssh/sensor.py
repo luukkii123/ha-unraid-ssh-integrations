@@ -6,7 +6,7 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass, replace
 from datetime import timedelta
 from functools import partial
-from typing import Any
+from typing import Any, Final
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -172,16 +172,31 @@ FAN_PERCENT = UnraidSensorDescription(
 #: The labels worth showing without being asked, per chip family. Everything
 #: else is created but left disabled: this board alone offers twenty
 #: temperature channels, and fifteen of them measure an input nobody wired.
+#:
+#: The channels `cpu_temp` and `board_temp` already read are deliberately
+#: absent. `cpu_temp` picks the best of Tctl/Tdie/Package and `board_temp`
+#: reads SYSTIN, so enabling those labels here too would put one measurement
+#: into two entities under two names -- which is what the sensor list looked
+#: like before 0.5.0. `CPUTIN` stays: it is the board's own reading of the
+#: socket and differs from SYSTIN by fifteen degrees on real hardware.
 _DEFAULT_TEMP_LABELS: tuple[tuple[tuple[str, ...], frozenset[str]], ...] = (
-    (("k10temp", "coretemp"), frozenset({"Tctl", "Tdie", "Package id 0"})),
-    (("nvme",), frozenset({"Composite"})),
+    # An NVMe reports `Composite` plus one channel per internal sensor. The
+    # controller sensor runs measurably hotter than the composite average and
+    # is the one that throttles, so it is worth showing; the others merely
+    # repeat `Composite`.
+    (("nvme",), frozenset({"Composite", "Sensor 2"})),
 )
+
+#: Labels an aggregate sensor already covers -- see `_DEFAULT_TEMP_LABELS`.
+_AGGREGATED_TEMP_LABELS: Final = frozenset({"Tctl", "Tdie", "Package id 0", "SYSTIN"})
 
 
 def _temp_enabled_by_default(sensor: HwSensor) -> bool:
     chip = sensor.chip.lower()
+    if sensor.label in _AGGREGATED_TEMP_LABELS:
+        return False
     if is_board_chip(chip):
-        return sensor.label in ("SYSTIN", "CPUTIN")
+        return sensor.label == "CPUTIN"
     return any(sensor.label in labels for prefixes, labels in _DEFAULT_TEMP_LABELS if chip.startswith(prefixes))
 
 
