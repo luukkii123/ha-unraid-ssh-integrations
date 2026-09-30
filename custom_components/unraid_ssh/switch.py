@@ -15,7 +15,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from . import actions
 from .const import CONTAINER_ACTION_TIMEOUT, STACK_ACTION_TIMEOUT, VM_ACTION_TIMEOUT
 from .coordinator import UnraidConfigEntry, UnraidCoordinator
-from .entity import ContainerPictureMixin, UnraidEntity, can_register_container, device_for_container, stack_device, track_new, vm_device
+from .entity import VmMetadataMixin, ContainerPictureMixin, UnraidEntity, can_register_container, device_for_container, stack_device, track_new, vm_device
 from .parse import Container
 from .model import (
     Snapshot,
@@ -97,6 +97,10 @@ class UnraidSwitch(UnraidEntity, SwitchEntity):
         await self._run(self.entity_description.off_cmd)
 
 
+class VmSwitch(VmMetadataMixin, UnraidSwitch):
+    _role = "control"
+
+
 class ContainerSwitch(ContainerPictureMixin, UnraidSwitch):
     """Only individual containers carry a container picture."""
 
@@ -157,7 +161,7 @@ def _plan(coordinator: UnraidCoordinator, snapshot: Snapshot) -> Iterator[Planne
         yield from _plan_container(coordinator, container)
     for vm in snapshot.vms:
         key = f"vm_{vm.name}"
-        yield key, partial(UnraidSwitch, coordinator, VM, vm_device(coordinator, vm), key, vm.name, find_vm)
+        yield key, partial(VmSwitch, coordinator, VM, vm_device(coordinator, vm), key, vm.name, find_vm)
 
 
 def expected_keys(coordinator: UnraidCoordinator, snapshot: Snapshot) -> set[str]:

@@ -18,7 +18,7 @@ from .coordinator import UnraidCoordinator
 from .devices import container_assignment_complete, container_device_suffix, share_device_suffix
 from .icon_cache import ContainerIconCache
 from .model import (
-    Snapshot, Stack, container_identity, container_key, container_metadata,
+    Snapshot, Stack, vm_metadata, container_identity, container_key, container_metadata,
     find_container_by_key, find_stack, stack_key,
 )
 from .parse import Container, Disk, Share, Vm
@@ -93,7 +93,8 @@ def _preserve_failed_device(entity: Entity, coordinator: UnraidCoordinator, info
     if snapshot is None or entity.hass is None:
         return info
     if section == "docker":
-        key = suffix.removeprefix("restart_container_") if suffix.startswith("restart_container_") else suffix.partition("_")[2]
+        prefix = next(p for p in ("restart_container_", "container_ram_used_", "container_ram_limit_", "container_cpu_", "container_", "update_") if suffix.startswith(p))
+        key = suffix.removeprefix(prefix)
         failed = not container_assignment_complete(snapshot, find_container_by_key(snapshot, key))
     else:
         failed = section in snapshot.failed
@@ -144,7 +145,7 @@ def remember_container_identity(coordinator: UnraidCoordinator, container: Conta
         registry.async_update_entity_options(entity_id, DOMAIN, options)
 
 
-def can_register_container(coordinator: UnraidCoordinator, container: Container, domain: str) -> bool:
+def can_register_container(coordinator: UnraidCoordinator, container: Container, domain: str, prefix: str | None = None) -> bool:
     """Defer uncertain new assignments; existing entities retain their device."""
     if container_identity_regressed(coordinator, container):
         return False
@@ -152,7 +153,7 @@ def can_register_container(coordinator: UnraidCoordinator, container: Container,
             and container_identity(coordinator.data, container)[1] != "ambiguous"):
         return True
     registry = er.async_get(coordinator.hass)
-    prefix = {"switch": "container", "update": "update", "button": "restart_container"}[domain]
+    prefix = prefix or {"switch": "container", "update": "update", "button": "restart_container"}[domain]
     unique_id = f"{coordinator.entry.entry_id}_{prefix}_{container_key(coordinator.data, container)}"
     entity_id = registry.async_get_entity_id(domain, DOMAIN, unique_id)
     if entity_id is None:
@@ -315,7 +316,8 @@ class ContainerPictureMixin:
         # promoted after labels recover. Loaded entities must follow it too.
         if registry_entry := getattr(self, "registry_entry", None):
             suffix = registry_entry.unique_id.removeprefix(fast.entry.entry_id + "_")
-            prefix = {"control": "container_", "update": "update_", "restart": "restart_container_"}[self._role]
+            prefix = {"control": "container_", "update": "update_", "restart": "restart_container_",
+                      "cpu": "container_cpu_", "ram_used": "container_ram_used_", "ram_limit": "container_ram_limit_"}[self._role]
             if suffix.startswith(prefix):
                 self._container_key = suffix.removeprefix(prefix)
         return find_container_by_key(fast.data, self._container_key) if fast.data else None
@@ -352,3 +354,15 @@ class ContainerPictureMixin:
         self.async_on_remove(self._icons.async_add_listener(self.async_write_ha_state))
         if container := self.current_container:
             remember_container_identity(getattr(self, "_fast", self.coordinator), container, self.entity_id)
+
+
+class VmMetadataMixin:
+    """Stable VM metadata on its existing device and name identity."""
+    _role = "state"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        if self.item is not None:
+            self._last_vm_metadata = vm_metadata(self.item, self.coordinator.entry.entry_id, self._role)
+        return getattr(self, "_last_vm_metadata", {"kind": "vm", "role": self._role,
+                       "config_entry_id": self.coordinator.entry.entry_id, "vm_key": self._item_key})

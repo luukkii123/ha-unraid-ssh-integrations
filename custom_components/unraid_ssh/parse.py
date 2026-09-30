@@ -6,10 +6,12 @@ plain dataclasses, so each one is testable against a recorded fixture.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 import re
-from typing import Final
+import math
+import time
+from typing import Any, Final
 
 _KV_RE = re.compile(r'^([A-Za-z0-9_.\-]+)="?(.*?)"?$')
 _SECTION_RE = re.compile(r'^\["?([^"\]]+)"?\]$')
@@ -516,6 +518,8 @@ def vm_state(raw: str) -> str:
 class Vm:
     name: str
     state: str
+    # Transient libvirt domain ID guards CPU deltas; it is not device identity.
+    runtime_id: str | None = field(default=None, compare=False)
 
 
 def parse_vms(text: str) -> list[Vm]:
@@ -528,7 +532,7 @@ def parse_vms(text: str) -> list[Vm]:
         parts = re.split(r"\s{2,}", stripped)
         if len(parts) < 3:
             continue
-        out.append(Vm(name=parts[1], state=vm_state(parts[2])))
+        out.append(Vm(name=parts[1], state=vm_state(parts[2]), runtime_id=parts[0] if parts[0].isdecimal() else None))
     return out
 
 
@@ -571,3 +575,93 @@ def parse_remote_digests(text: str) -> dict[str, str | None]:
         if ref:
             out[ref] = digest.strip() or None
     return out
+
+# Resource samples are independent of inventory: only model binds their names.
+@dataclass(frozen=True)
+class ResourceSample:
+    cpu_percent: float | None = None
+    ram_used: int | None = None
+    ram_limit: int | None = None
+    ram_capacity: int | None = None  # Docker display denominator; may be host RAM
+
+
+@dataclass(frozen=True)
+class VmResourceSample:
+    cpu_time: int | None = None  # libvirt nanoseconds, never uptime
+    cpu_percent: float | None = None  # 100% per fully occupied core
+    ram_allocated: int | None = None
+    ram_max: int | None = None
+    ram_host_rss: int | None = None
+    ram_used: int | None = None  # guest available - unused, fresh balloon stats only
+
+
+def _nonnegative(value: Any) -> float | None:
+    try:
+        number = float(value)
+        return number if math.isfinite(number) and number >= 0 else None
+    except (ValueError, TypeError):
+        return None
+
+
+def _memory_bytes(value: str) -> int | None:
+    match = re.fullmatch(r'\s*([0-9]+(?:\.[0-9]+)?)\s*(B|[KMGT]iB|[kMGT]B)\s*', value)
+    if not match:
+        return None
+    unit = match[2]
+    scale = {'B': 1, 'kB': 1000, 'MB': 1000**2, 'GB': 1000**3, 'TB': 1000**4,
+             'KiB': 1024, 'MiB': 1024**2, 'GiB': 1024**3, 'TiB': 1024**4}[unit]
+    number = _nonnegative(match[1])
+    result = number * scale if number is not None else None
+    return int(result) if result is not None and math.isfinite(result) else None
+
+
+def parse_docker_stats(text: str) -> dict[str, ResourceSample]:
+    result = {}
+    for line in text.splitlines():
+        try:
+            row = json.loads(line)
+            if not isinstance(row, dict) or not isinstance(row.get('Name'), str) or not row['Name']:
+                continue
+            usage = str(row.get('MemUsage', '')).split('/')
+            result[row['Name']] = ResourceSample(
+                _nonnegative(str(row.get('CPUPerc', '')).removesuffix('%')),
+                ram_used=_memory_bytes(usage[0]),
+                ram_capacity=_memory_bytes(usage[1]) if len(usage) == 2 else None)
+        except (ValueError, TypeError):
+            continue
+    return result
+
+
+def parse_vm_stats(text: str) -> dict[str, VmResourceSample]:
+    rows: dict[str, dict[str, int]] = {}
+    current = None
+    for line in text.splitlines():
+        if match := re.fullmatch(r"Domain: '(.*)'", line.strip()):
+            current = rows.setdefault(match[1], {})
+        elif current is not None and '=' in line:
+            key, raw = line.strip().split('=', 1)
+            # Libvirt fields are unsigned integers; avoid lossy float counters.
+            if raw.isdecimal():
+                current[key] = int(raw)
+    result = {}
+    for name, row in rows.items():
+        def kib(key):
+            value = row.get('balloon.' + key)
+            return value * 1024 if value is not None else None
+        total, unused = kib('available'), kib('unused')
+        updated = row.get('balloon.last-update', 0)
+        fresh = updated > 0 and 0 <= time.time() - updated <= 120
+        used = total - unused if fresh and total is not None and unused is not None and unused <= total else None
+        result[name] = VmResourceSample(cpu_time=row.get('cpu.time'), ram_allocated=kib('current'),
+                                       ram_max=kib('maximum'), ram_host_rss=kib('rss'), ram_used=used)
+    return result
+
+
+def parse_docker_limits(text: str) -> dict[str, int]:
+    """Only targeted HostConfig.Memory, not docker stats' host-capacity fallback."""
+    result = {}
+    for line in text.splitlines():
+        parts = line.split("\t")
+        if len(parts) == 2 and parts[1].isdecimal() and int(parts[1]) > 0:
+            result[parts[0].removeprefix("/")] = int(parts[1])
+    return result

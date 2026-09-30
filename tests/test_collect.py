@@ -14,7 +14,7 @@ from unraid_ssh import collect, parse
 def test_state_command_contains_every_section_in_order():
     cmd = collect.build_state_command()
     names = [name for name, _ in collect.SECTIONS]
-    assert names == ["var", "disks", "shares", "stat", "mem", "load", "gpu", "sensors", "docker", "icons", "compose", "stacks", "vms"]
+    assert names == ["var", "disks", "shares", "stat", "mem", "load", "gpu", "sensors", "docker", "docker_stats", "docker_limits", "vm_stats", "icons", "compose", "stacks", "vms"]
     positions = [cmd.index(f"echo '@@@ {name}'") for name in names]
     assert positions == sorted(positions)
     assert cmd.rstrip().endswith("echo '@@@ end'")

@@ -10,9 +10,10 @@ container is ever dropped on the floor.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import json
 import re
+import time
 from typing import Any, Callable
 
 from . import parse
@@ -225,6 +226,9 @@ class Snapshot:
     # above it is required, and the tests that build snapshots by hand
     # would all have to change for a channel list most of them do not use.
     sensors: tuple[HwSensor, ...] = ()
+    container_resources: dict[str, parse.ResourceSample] = field(default_factory=dict)
+    vm_resources: dict[str, parse.VmResourceSample] = field(default_factory=dict)
+    sampled_at: float | None = None
 
 
 def _section(sections: dict[str, str], name: str, fn: Callable[[str], Any], failed: set[str], default: Any) -> Any:
@@ -239,7 +243,7 @@ def _section(sections: dict[str, str], name: str, fn: Callable[[str], Any], fail
         return default
 
 
-def build_snapshot(sections: dict[str, str], previous: Snapshot | None) -> Snapshot:
+def build_snapshot(sections: dict[str, str], previous: Snapshot | None, *, sampled_at: float | None = None) -> Snapshot:
     failed: set[str] = set()
     array = _section(sections, "var", parse.parse_var, failed, None)
     disks = tuple(_section(sections, "disks", parse.parse_disks, failed, []))
@@ -261,6 +265,24 @@ def build_snapshot(sections: dict[str, str], previous: Snapshot | None) -> Snaps
     projects = _section(sections, "compose", parse.parse_compose_ls, failed, [])
     stack_dirs = _section(sections, "stacks", parse.parse_stack_dirs, failed, [])
     vms = tuple(_section(sections, "vms", parse.parse_vms, failed, []))
+    sampled_at = time.monotonic() if sampled_at is None else sampled_at
+    docker_stats = _section(sections, "docker_stats", parse.parse_docker_stats, failed, {})
+    docker_limits = _section(sections, "docker_limits", parse.parse_docker_limits, failed, {})
+    vm_stats = _section(sections, "vm_stats", parse.parse_vm_stats, failed, {})
+    resources = {}
+    for vm in vms:
+        if vm.state != "running" or vm.name not in vm_stats:
+            continue
+        sample = vm_stats[vm.name]
+        old = previous.vm_resources.get(vm.name) if previous else None
+        old_vm = find_vm(previous, vm.name) if previous else None
+        elapsed = sampled_at - previous.sampled_at if previous and previous.sampled_at is not None else 0
+        cpu = None
+        if (old_vm and old_vm.state == "running" and old_vm.runtime_id == vm.runtime_id and old and elapsed > 0
+                and old.cpu_time is not None and sample.cpu_time is not None
+                and sample.cpu_time >= old.cpu_time):
+            cpu = (sample.cpu_time - old.cpu_time) / (elapsed * 1e9) * 100
+        resources[vm.name] = replace(sample, cpu_percent=cpu)
     stacks, loose = merge_stacks(stack_dirs, projects, containers)
     prev_cpu = previous.cpu_times if previous else None
     return Snapshot(
@@ -280,6 +302,8 @@ def build_snapshot(sections: dict[str, str], previous: Snapshot | None) -> Snaps
         failed=frozenset(failed),
         icon_sources=icon_sources,
         icons_valid=icons_valid,
+        container_resources={c.name: replace(docker_stats[c.name], ram_limit=docker_limits.get(c.name)) for c in containers if c.state == "running" and c.name in docker_stats},
+        vm_resources=resources, sampled_at=sampled_at,
     )
 
 
@@ -519,3 +543,8 @@ def stack_metadata(stack: Stack, entry_id: str, role: str) -> dict[str, Any]:
 
 def stack_restartable(stack: Stack) -> bool:
     return bool(stack.config_files)
+
+
+def vm_metadata(vm: Vm, entry_id: str, role: str) -> dict[str, Any]:
+    return {"kind": "vm", "role": role, "config_entry_id": entry_id,
+            "vm_key": vm.name, "vm_name": vm.name, "vm_state": vm.state}

@@ -42,7 +42,7 @@ _ENTITY_SECTIONS: tuple[tuple[tuple[str, ...], frozenset[str]], ...] = (
     # purely through its containers' labels would otherwise vanish from the
     # snapshot whenever `docker ps` fails.
     (("stack_", "restart_stack_"), frozenset({"docker", "compose", "stacks"})),
-    (("vm_", "vm_state_"), frozenset({"vms"})),
+    (("vm_", "vm_state_", "restart_vm_"), frozenset({"vms"})),
     (("disk_temp_", "disk_usage_", "disk_status_", "disk_spundown_"), frozenset({"disks"})),
     (("share_used_", "share_free_"), frozenset({"shares"})),
     (("gpu_util_", "gpu_vram_", "gpu_temp_", "gpu_power_", "gpu_fan_"), frozenset({"gpu"})),
@@ -73,7 +73,7 @@ def _sections(table: tuple[tuple[tuple[str, ...], frozenset[str]], ...], suffix:
     return next((sections for prefixes, sections in table if suffix.startswith(prefixes)), None)
 
 
-_CONTAINER_PREFIXES: tuple[str, ...] = ("restart_container_", "container_", "update_")
+_CONTAINER_PREFIXES: tuple[str, ...] = ("restart_container_", "container_ram_used_", "container_ram_limit_", "container_cpu_", "container_", "update_")
 
 
 def _container_still_owned(suffix: str, snapshot: Snapshot) -> bool:

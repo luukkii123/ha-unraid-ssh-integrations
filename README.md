@@ -302,3 +302,34 @@ die 113 HA-Tests zusätzlich mit 2026.7.0 geprüft. Native Restartbefehle,
 stabile Composeidentitäten, Migration und verlorene Compose-Labels sind
 abgedeckt. Statische UI-/Übersetzungsprüfung bestanden. Produktive
 Container wurden für die Abnahme nicht neu gestartet.
+
+## Ressourcenvertrag – lokal geprüft, 30.09.2026
+
+195 reine Tests und 116 HA-Tests jeweils mit den vorhandenen Images für
+HA 2026.7.0 und 2026.9.2 grün. Statische UI-/Übersetzungsprüfung ohne Verstoß.
+
+Container liefern CPU in Prozent (100 % je ausgelastetem Kern) und RAM in
+Bytes. `ram_limit` stammt ausschließlich aus dem gezielt gelesenen
+`HostConfig.Memory`: kein konfiguriertes Limit oder eine fehlgeschlagene
+Limitabfrage ergibt keinen Wert. Der Docker-Stats-Nenner kann Host-RAM sein
+und dient daher nicht als Containerlimit. Docker zeigt gerundete RAM-Werte;
+die Einheiten werden explizit in Bytes umgerechnet.
+
+VM-CPU verwendet das Delta von `cpu.time` über monotone Pollzeit und kann
+über 100 % liegen. Erster Poll, geänderter libvirt-Domain-ID, Counterreset,
+fehlende Probe und ausgeschaltete VM ergeben keinen CPU-Wert.
+`ram_allocated` ist `balloon.current`, `ram_max` ist `balloon.maximum`,
+`ram_host_rss` ist Hostprozess-RSS einschließlich QEMU-Overhead.
+`ram_used` ist ausschließlich `balloon.available - balloon.unused` bei
+konsistenten Gastwerten und höchstens 120 Sekunden altem `balloon.last-update`.
+Fehlende Gaststatistik bleibt nicht verfügbar. Die Integration aktiviert
+keine Gaststatistik und installiert keinen Agent. Keine VM-Uptime/IP oder
+Gast-Dateisystembelegung wird aus diesen Werten geschätzt.
+
+Ressourcensensoren bleiben auf den bisherigen Geräten, mit stabilen
+`kind`/`role`/`config_entry_id` und `container_key`/`stack_key` bzw. `vm_key`.
+Ein Statsausfall entfernt kein Inventar, Gerät oder bestehende Entität.
+Der VM-Neustartbutton verwendet genau `virsh reboot` für laufende VMs,
+mit gequotetem Namen, ohne harten Fallback. Befehlsannahme bestätigt keinen
+abgeschlossenen Gastneustart. Die Version bleibt bis zur Veröffentlichung
+unverändert; es wurden keine produktiven Aktionen ausgeführt.

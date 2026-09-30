@@ -65,7 +65,9 @@ def async_reconcile_devices(hass: HomeAssistant, entry: UnraidConfigEntry) -> No
                 continue
             device_id = ensure(device_for_container(coordinator, container))
             key = container_key(snapshot, container)
-            for domain, role in (("switch", "container"), ("update", "update"), ("button", "restart_container")):
+            for domain, role in (("switch", "container"), ("update", "update"), ("button", "restart_container"),
+                                 ("sensor", "container_cpu"), ("sensor", "container_ram_used"),
+                                 ("sensor", "container_ram_limit")):
                 canonical = entry.entry_id + "_" + role + "_" + key
                 legacy = entry.entry_id + "_" + role + "_" + container.name
                 old_id = entities.async_get_entity_id(domain, DOMAIN, legacy)

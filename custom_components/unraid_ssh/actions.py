@@ -173,3 +173,8 @@ def stack_restart_cmd(stack: Stack) -> str:
     env = _q(f"{folder}/.env")
     return (f"if [ -f {env} ]; then set -- --env-file {env}; else set --; fi && "
             f"cd {_q(folder)} && {command}")
+
+
+def vm_restart_cmd(name: str) -> str:
+    """Request a guest reboot; never fall back to destroy/reset or stop/start."""
+    return f"virsh reboot {_q(name)}"

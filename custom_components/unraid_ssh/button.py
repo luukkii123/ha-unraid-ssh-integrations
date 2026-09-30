@@ -12,15 +12,15 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import actions
-from .const import CONTAINER_ACTION_TIMEOUT, STACK_ACTION_TIMEOUT
+from .const import CONTAINER_ACTION_TIMEOUT, STACK_ACTION_TIMEOUT, VM_ACTION_TIMEOUT
 from .coordinator import UnraidConfigEntry, UnraidCoordinator
 from .entity import (
-    ContainerPictureMixin, UnraidEntity, can_register_container,
+    VmMetadataMixin, vm_device, ContainerPictureMixin, UnraidEntity, can_register_container,
     device_for_container, server_device, stack_device, track_new,
 )
 from .model import (
     Snapshot, container_key, find_container_by_key, find_stack_by_key,
-    stack_key, stack_metadata, stack_restartable,
+    find_vm, stack_key, stack_metadata, stack_restartable,
 )
 from .parse import Container
 
@@ -80,7 +80,31 @@ class ContainerRestartButton(ContainerPictureMixin, RestartButton):
         )
 
 
+
+VM_RESTART = ButtonEntityDescription(key="vm_restart")
+
+
+class VmRestartButton(VmMetadataMixin, UnraidEntity, ButtonEntity):
+    _role = "restart"
+
+    @property
+    def available(self) -> bool:
+        return super().available and self.item.state == "running"
+
+    async def async_press(self) -> None:
+        if not self.available:
+            raise HomeAssistantError("unraid_ssh: restart target is unavailable")
+        try:
+            await actions.run_action(self.coordinator.client, actions.vm_restart_cmd(self.item.name), VM_ACTION_TIMEOUT)
+        except actions.ActionError as err:
+            raise HomeAssistantError(f"unraid_ssh: {err}") from err
+        finally:
+            await self.coordinator.async_request_refresh()
+
 def _plan(coordinator: UnraidCoordinator, snapshot: Snapshot) -> Iterator[tuple[str, Callable[[], ButtonEntity] | None]]:
+    for vm in snapshot.vms:
+        key = f"restart_vm_{vm.name}"
+        yield key, partial(VmRestartButton, coordinator, VM_RESTART, vm_device(coordinator, vm), key, vm.name, find_vm)
     yield CHECK.key, partial(CheckUpdatesButton, coordinator, CHECK, server_device(coordinator), CHECK.key)
     for container in snapshot.containers:
         key = f"restart_container_{container_key(snapshot, container)}"

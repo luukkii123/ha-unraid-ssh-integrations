@@ -69,6 +69,39 @@
   },
   "entity": {
     "sensor": {
+      "container_cpu": {
+        "name": "{container} CPU-Auslastung"
+      },
+      "standalone_cpu": {
+        "name": "CPU-Auslastung"
+      },
+      "container_ram_used": {
+        "name": "{container} Genutzter RAM"
+      },
+      "standalone_ram_used": {
+        "name": "Genutzter RAM"
+      },
+      "container_ram_limit": {
+        "name": "{container} RAM-Limit"
+      },
+      "standalone_ram_limit": {
+        "name": "RAM-Limit"
+      },
+      "vm_cpu": {
+        "name": "CPU-Auslastung"
+      },
+      "vm_ram_used": {
+        "name": "Gast-RAM genutzt"
+      },
+      "vm_ram_allocated": {
+        "name": "Zugewiesener RAM"
+      },
+      "vm_ram_max": {
+        "name": "Maximaler RAM"
+      },
+      "vm_ram_host_rss": {
+        "name": "Host-RAM (RSS)"
+      },
       "cpu_percent": {"name": "CPU-Auslastung"},
       "ram_percent": {"name": "RAM-Auslastung"},
       "load_1": {"name": "Systemlast (1 min)"},
@@ -101,6 +134,9 @@
       "disk_spundown": {"name": "Standby"}
     },
     "button": {
+      "vm_restart": {
+        "name": "Neu starten"
+      },
       "container_restart": {"name": "{container} Neustart"},
       "standalone_restart": {"name": "Neustart"},
       "stack_restart": {"name": "Neustart"},

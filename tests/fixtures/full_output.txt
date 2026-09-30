@@ -953,4 +953,7 @@ gps-bridge	running	gps_bridge-gps-bridge	gps_bridge	gps-bridge
 -----------------------------
  -    Windows 11   shut off
 
+@@@ docker_stats
+@@@ docker_limits
+@@@ vm_stats
 @@@ end

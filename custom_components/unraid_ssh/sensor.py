@@ -28,9 +28,10 @@ from homeassistant.util import dt as dt_util
 
 from .const import ARRAY_STATES, DISK_STATUSES, VM_STATES
 from .coordinator import UnraidConfigEntry, UnraidCoordinator, UpdateCoordinator, UpdateState
-from .entity import UnraidEntity, disk_device, server_device, share_device, track_new, vm_device
+from .entity import VmMetadataMixin, ContainerPictureMixin, can_register_container, device_for_container, UnraidEntity, disk_device, server_device, share_device, track_new, vm_device
 from .model import (
     Snapshot,
+    container_key, find_container_by_key,
     board_temp,
     chip_display_name,
     cpu_temp,
@@ -226,6 +227,56 @@ class UnraidSensor(UnraidEntity, SensorEntity):
         return None if item is None or attrs_fn is None else attrs_fn(item)
 
 
+
+class VmStateSensor(VmMetadataMixin, UnraidSensor):
+    _role = "state"
+
+
+def resource_description(kind: str, role: str) -> UnraidSensorDescription:
+    return UnraidSensorDescription(
+        key=f"{kind}_{role}", native_unit_of_measurement=PERCENTAGE if role == "cpu" else UnitOfInformation.BYTES,
+        device_class=None if role == "cpu" else SensorDeviceClass.DATA_SIZE,
+        state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=1 if role == "cpu" else 0,
+        value_fn=lambda value: value,
+    )
+
+
+class ResourceSensor(UnraidSensor):
+    @property
+    def native_value(self) -> Any:
+        item = self.item
+        if item is None or item.state != "running":
+            return None
+        samples = self.snapshot.container_resources if self.entity_description.key.startswith("container_") else self.snapshot.vm_resources
+        sample = samples.get(item.name)
+        field = "cpu_percent" if self._role == "cpu" else self._role
+        return getattr(sample, field, None)
+
+    @property
+    def available(self) -> bool:
+        return super().available and self.native_value is not None
+
+
+class ContainerResourceSensor(ContainerPictureMixin, ResourceSensor):
+    def __init__(self, coordinator: UnraidCoordinator, container: Any, role: str) -> None:
+        self._role = role
+        self._icons = coordinator.entry.runtime_data.icons
+        self._container_name = container.name
+        self._container_key = container_key(coordinator.data, container)
+        desc = resource_description("container", role)
+        if not container.project:
+            desc = replace(desc, translation_key=f"standalone_{role}")
+        super().__init__(coordinator, desc, device_for_container(coordinator, container),
+                         f"container_{role}_{self._container_key}", self._container_key, find_container_by_key,
+                         {"container": container.name})
+
+
+class VmResourceSensor(VmMetadataMixin, ResourceSensor):
+    def __init__(self, coordinator: UnraidCoordinator, vm: Any, role: str) -> None:
+        self._role = role
+        super().__init__(coordinator, resource_description("vm", role), vm_device(coordinator, vm),
+                         f"vm_{role}_{vm.name}", vm.name, find_vm)
+
 class UpdatesAvailableSensor(CoordinatorEntity[UpdateCoordinator], SensorEntity):
     """How many containers have a newer image in the registry.
 
@@ -312,10 +363,17 @@ def _plan(coordinator: UnraidCoordinator, snapshot: Snapshot) -> Iterator[Planne
             # Pool members (raid2, raid3, ...) carry no filesystem of their
             # own: a usage sensor there would stay unknown for good.
             yield key, None if desc.key == "disk_usage" and disk.fs_size_kib <= 0 else make
+    for container in snapshot.containers:
+        for role in ("cpu", "ram_used", "ram_limit"):
+            key = f"container_{role}_{container_key(snapshot, container)}"
+            make = partial(ContainerResourceSensor, coordinator, container, role)
+            yield key, make if can_register_container(coordinator, container, "sensor", f"container_{role}") else None
     for vm in snapshot.vms:
+        for role in ("cpu", "ram_allocated", "ram_max", "ram_host_rss", "ram_used"):
+            yield f"vm_{role}_{vm.name}", partial(VmResourceSensor, coordinator, vm, role)
         for desc in VM:
             key = f"{desc.key}_{vm.name}"
-            yield key, partial(UnraidSensor, coordinator, desc, vm_device(coordinator, vm), key, vm.name, find_vm)
+            yield key, partial(VmStateSensor, coordinator, desc, vm_device(coordinator, vm), key, vm.name, find_vm)
 
 
 def _plan_hw_sensor(coordinator: UnraidCoordinator, server: Any, sensor: HwSensor) -> Iterator[Planned]:
