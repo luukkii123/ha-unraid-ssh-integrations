@@ -19,7 +19,7 @@ Compose-Stacks und verliert nach Updates die VMs. SSH ist immer da.
 | Neustart | Native Docker-/Compose-Restartbuttons; keine Stop/Start-Kette |
 | Updates | `update`-Entität je Container mit Registry-Digest, mit „Installieren" — auch für Compose-Container, die Unraids eigene Prüfung nicht sieht; dazu ein Zähler und ein Knopf „Jetzt prüfen" |
 
-Diese Fassung ist **0.5.0**. HACS installiert Releases, nicht automatisch den
+Diese Fassung ist **0.6.0**. HACS installiert Releases, nicht automatisch den
 Entwicklungszweig.
 
 ### Mainboard-Temperaturen brauchen einen Treiber
@@ -333,3 +333,14 @@ Der VM-Neustartbutton verwendet genau `virsh reboot` für laufende VMs,
 mit gequotetem Namen, ohne harten Fallback. Befehlsannahme bestätigt keinen
 abgeschlossenen Gastneustart. Die Version bleibt bis zur Veröffentlichung
 unverändert; es wurden keine produktiven Aktionen ausgeführt.
+
+## Geprüft – 0.6.0, 30.09.2026
+
+Der oben dokumentierte Ressourcenvertrag ist mit 195 reinen Tests und
+116 HA-Tests auf 2026.7.0 und 2026.9.2 geprüft; die 116 HA-Tests zusätzlich
+auf 2026.9.4. Statische UI-/Übersetzungsprüfung ohne Verstöße. Gegenüber dem
+geprüften Kandidaten wurde ausschließlich die Manifestversion erhöht.
+CPU und die getrennten RAM-Rollen bleiben an bestehende Geräte gebunden;
+fehlende Gaststatistiken werden nicht als Gastverbrauch ausgegeben.
+VM-Neustart ist ein nativer Button mit `virsh reboot`, ausschließlich für
+laufende VMs. Kein produktiver VM-/Containerneustart für diese Abnahme.
