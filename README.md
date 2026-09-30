@@ -350,7 +350,8 @@ unverändert; es wurden keine produktiven Aktionen ausgeführt.
 Der oben dokumentierte Ressourcenvertrag ist mit 195 reinen Tests und
 116 HA-Tests auf 2026.7.0 und 2026.9.2 geprüft; die 116 HA-Tests zusätzlich
 auf 2026.9.4. Statische UI-/Übersetzungsprüfung ohne Verstöße. Gegenüber dem
-geprüften Kandidaten wurde ausschließlich die Manifestversion erhöht.
+geprüften Kandidaten wurden die Manifestversion erhöht und die oben
+dokumentierte AsyncSSH-Mindestversionsconstraint korrigiert.
 CPU und die getrennten RAM-Rollen bleiben an bestehende Geräte gebunden;
 fehlende Gaststatistiken werden nicht als Gastverbrauch ausgegeben.
 VM-Neustart ist ein nativer Button mit `virsh reboot`, ausschließlich für
