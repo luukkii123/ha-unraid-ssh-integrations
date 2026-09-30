@@ -17,6 +17,26 @@ sein. Das Plugin pinnt seine HA-Testabhängigkeiten. Die CI verwendet dieselben
 Pins. `2026.7.0` ist die Mindestversion: `asyncssh==2.24.0` benötigt
 `cryptography>=48.0.1`, womit ältere HA-Pins nicht kompatibel sind.
 
+## Manifestconstraint und konkrete Testversionen (30.09.2026)
+
+Das ausgelieferte Manifest verwendet `asyncssh>=2.24.0`. Der aktuelle
+[hassfest-Validator](https://github.com/home-assistant/core/blob/dev/script/hassfest/requirements.py)
+verbietet exakte Pins eines Pakets, das HA selbst in `requirements_all.txt`
+führt: Die Integration muss eine spätere von HA gewählte Paketversion zulassen.
+Die Mindestversion bleibt unverändert. Der Docker-Testresolver pinnt bewusst
+weiter `asyncssh==2.24.0`, um die konkret geprüfte Bibliotheksversion zu benennen;
+dieser Testpin ist keine Installationsconstraint des Manifests.
+
+Auf den vorhandenen Images mit HA2026.7.0/Plugin0.13.344 und
+HA2026.9.2/Plugin0.13.365 wurden nach dieser Constraintänderung jeweils die
+reinen und HA-Suiten erneut geprüft: je **195 reine und 116 HA-Tests**,
+0 Skips, beide `pip check` grün. Beide verwenden Python3.14,
+asyncssh2.24.0 und cryptography48.0.1. Die Transporttests verwenden einen
+echten lokalen AsyncSSH-Server, ohne produktiven SSH-Zugriff. Eine zukünftige
+AsyncSSH-Version ist dadurch erlaubt, aber nicht pauschal als getestet
+behauptet. HA2026.9.4 wurde im vorangehenden UPDATED-Task geprüft; dieser
+scoped Constraintlauf wiederholt nur die beiden vorhandenen CI-Matriximages.
+
 Nachbaubar sind die Versionsmatrix und die gemeinsame Resolverstrategie,
 nicht eine bitgleiche Umgebung: Das Python-Basisimage ist nicht per Digest
 fixiert; APT-Pakete und nicht separat gepinnte transitive Python-Abhängigkeiten

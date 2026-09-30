@@ -250,6 +250,17 @@ Entitätenkarte den Namen der jeweiligen Zeile setzen). Entitätsnamen und IDs
 müssen dafür nicht geändert werden. Auch HAs Gerätedetail zeigt kurze
 Entitätsnamen.
 
+## Abhängigkeitsconstraint, 30.09.2026
+
+Das Manifest erlaubt `asyncssh>=2.24.0`, damit die Integration die von HA
+gewählte Bibliotheksversion übernehmen kann. Exakte Pins eines von HA selbst
+geführten Pakets lehnt der aktuelle hassfest-Validator ab. Die konkret
+geprüfte Baseline bleibt asyncssh2.24.0; die bestehenden Testresolver und die
+beiden HA-Matrixversionen bleiben unverändert. Einzelheiten und Grenzen:
+[`tests_ha/README.md`](tests_ha/README.md#manifestconstraint-und-konkrete-testversionen-30092026).
+Backendcode und Releaseversion wurden durch diese Constraintkorrektur nicht
+geändert. Zukünftige erlaubte Paketversionen sind nicht automatisch geprüft.
+
 ## Geprüft am 15.09.2026
 
 Die nachbaubare Versionsmatrix und Resolverstrategie stehen in
