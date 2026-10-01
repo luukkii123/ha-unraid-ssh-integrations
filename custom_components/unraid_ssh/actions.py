@@ -137,6 +137,11 @@ def vm_shutdown_cmd(name: str) -> str:
     return f"virsh shutdown {_q(name)}"
 
 
+def vm_force_stop_cmd(name: str) -> str:
+    """Immediately power off one VM; never fall back from graceful shutdown."""
+    return f"virsh destroy {_q(name)}"
+
+
 # --- runner ---------------------------------------------------------------------------
 
 

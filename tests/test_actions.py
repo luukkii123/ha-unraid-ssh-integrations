@@ -78,6 +78,7 @@ def test_stack_without_folder_falls_back_to_compose_ls_files():
 def test_vm_commands():
     assert actions.vm_start_cmd("Windows 11") == "virsh start 'Windows 11'"
     assert actions.vm_shutdown_cmd("Windows 11") == "virsh shutdown 'Windows 11'"
+    assert actions.vm_force_stop_cmd("Guest's VM; echo nope") == "virsh destroy 'Guest'\"'\"'s VM; echo nope'"
 
 
 class _Client:

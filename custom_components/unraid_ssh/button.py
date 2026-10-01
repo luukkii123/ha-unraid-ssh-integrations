@@ -82,6 +82,7 @@ class ContainerRestartButton(ContainerPictureMixin, RestartButton):
 
 
 VM_RESTART = ButtonEntityDescription(key="vm_restart")
+VM_FORCE_STOP = ButtonEntityDescription(key="vm_force_stop")
 
 
 class VmRestartButton(VmMetadataMixin, UnraidEntity, ButtonEntity):
@@ -101,10 +102,32 @@ class VmRestartButton(VmMetadataMixin, UnraidEntity, ButtonEntity):
         finally:
             await self.coordinator.async_request_refresh()
 
+
+class VmForceStopButton(VmMetadataMixin, UnraidEntity, ButtonEntity):
+    _role = "force_stop"
+
+    @property
+    def available(self) -> bool:
+        return super().available and self.item.state not in {"shut_off", "unknown"}
+
+    async def async_press(self) -> None:
+        if not self.available:
+            raise HomeAssistantError("unraid_ssh: force-stop target is unavailable")
+        try:
+            await actions.run_action(self.coordinator.client,
+                                     actions.vm_force_stop_cmd(self.item.name), VM_ACTION_TIMEOUT)
+        except actions.ActionError as err:
+            raise HomeAssistantError(f"unraid_ssh: {err}") from err
+        finally:
+            await self.coordinator.async_request_refresh()
+
 def _plan(coordinator: UnraidCoordinator, snapshot: Snapshot) -> Iterator[tuple[str, Callable[[], ButtonEntity] | None]]:
     for vm in snapshot.vms:
         key = f"restart_vm_{vm.name}"
         yield key, partial(VmRestartButton, coordinator, VM_RESTART, vm_device(coordinator, vm), key, vm.name, find_vm)
+        force_key = f"force_stop_vm_{vm.name}"
+        yield force_key, partial(VmForceStopButton, coordinator, VM_FORCE_STOP,
+                                 vm_device(coordinator, vm), force_key, vm.name, find_vm)
     yield CHECK.key, partial(CheckUpdatesButton, coordinator, CHECK, server_device(coordinator), CHECK.key)
     for container in snapshot.containers:
         key = f"restart_container_{container_key(snapshot, container)}"

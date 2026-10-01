@@ -1,4 +1,5 @@
 """Card actions and metadata through real Home Assistant platform setup."""
+import asyncio
 from dataclasses import replace
 from unittest.mock import AsyncMock
 import pytest
@@ -184,6 +185,35 @@ async def test_update_follows_recreated_container_and_install_uses_current_servi
     await update.async_install(None, False)
     command = fast.client.run.call_args.args[0]
     assert ' pull web' in command and ' up -d web' in command
+    fast.async_request_refresh.assert_awaited_once()
+    slow.async_request_refresh.assert_awaited_once()
+    await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_update_install_exposes_real_in_progress_without_invented_percentage(hass, monkeypatch, tmp_path):
+    hass.config.config_dir = str(tmp_path)
+    entry, _, _ = legacy(hass)
+    await load(hass, monkeypatch, entry, compose_snapshot(),
+               {'old-web': ImageStatus('old-web', 'example/web', 'sha256:old', 'sha256:new', True)})
+    update = loaded(hass, 'update')[0]
+    fast, slow = entry.runtime_data.coordinator, entry.runtime_data.updates
+    started, finish = asyncio.Event(), asyncio.Event()
+
+    async def delayed_run(command, timeout):
+        started.set()
+        await finish.wait()
+        return CommandResult(0, '', '')
+
+    fast.client.run = AsyncMock(side_effect=delayed_run)
+    fast.async_request_refresh = AsyncMock()
+    slow.async_request_refresh = AsyncMock()
+    install = asyncio.create_task(update.async_install_with_progress(None, False))
+    await started.wait()
+    assert update.state_attributes['in_progress'] is True
+    assert update.state_attributes['update_percentage'] is None
+    finish.set()
+    await install
+    assert update.state_attributes['in_progress'] is False
     fast.async_request_refresh.assert_awaited_once()
     slow.async_request_refresh.assert_awaited_once()
     await hass.config_entries.async_unload(entry.entry_id)

@@ -163,6 +163,7 @@
       "vm_restart": {
         "name": "Restart"
       },
+      "vm_force_stop": {"name": "Force stop"},
       "container_restart": {"name": "{container} restart"},
       "standalone_restart": {"name": "Restart"},
       "stack_restart": {"name": "Restart"},

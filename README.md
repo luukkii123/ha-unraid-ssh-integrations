@@ -16,10 +16,10 @@ Compose-Stacks und verliert nach Updates die VMs. SSH ist immer da.
 | Temperaturen | Je Kanal aus `/sys/class/hwmon` ein Sensor — CPU, Mainboard, NVMe —, dazu die beiden festen Sensoren **CPU-Temperatur** und **Mainboard-Temperatur**, deren ID sich auch bei einem Hardwaretausch nicht ändert |
 | Lüfter | Je Lüfter **Drehzahl** in RPM und **PWM-Ansteuerung** in Prozent (aus `pwm`, 0–255); beim GPU-Lüfter kommt die **Lüfterdrehzahl** in Prozent direkt von `nvidia-smi`. Nur Anzeige — die Integration schreibt nie nach `pwm` |
 | Schalter | Docker-Container, Compose-Stacks (über das Compose-Manager-Plugin) und VMs — je Container, Stack oder VM ein Schalter **Status** (an/aus) |
-| Neustart | Native Docker-/Compose-Restartbuttons; keine Stop/Start-Kette |
+| Neustart und VM-Notabschaltung | Native Docker-/Compose-/VM-Restartbuttons; ein eigener VM-Button zum sofortigen Ausschalten, ohne Stop/Start-Kette |
 | Updates | `update`-Entität je Container mit Registry-Digest, mit „Installieren" — auch für Compose-Container, die Unraids eigene Prüfung nicht sieht; dazu ein Zähler und ein Knopf „Jetzt prüfen" |
 
-Diese Fassung ist **0.6.0**. HACS installiert Releases, nicht automatisch den
+Diese Fassung ist **0.6.1**. HACS installiert Releases, nicht automatisch den
 Entwicklungszweig.
 
 ### Mainboard-Temperaturen brauchen einen Treiber
@@ -125,6 +125,10 @@ Es gibt keine Stop/Start-Kette. Stackrestart ist nur mit den gemeldeten
 Compose-Dateien verfügbar und verwendet den tatsächlich laufenden Projektnamen.
 Fehler und Timeouts lösen ebenfalls eine Zustandsaktualisierung aus. Updates
 behalten ihre vorhandenen INSTALL-Fähigkeitsprüfungen.
+Die Home-Assistant-Update-Entität meldet während der Installation
+`in_progress: true` und danach wieder `false`. Die SSH-Installation liefert
+derzeit keinen verlässlichen numerischen Fortschritt; deshalb wird keine
+Prozentzahl geschätzt.
 
 ## Aufräumen und Bestandsschutz
 
@@ -356,3 +360,26 @@ CPU und die getrennten RAM-Rollen bleiben an bestehende Geräte gebunden;
 fehlende Gaststatistiken werden nicht als Gastverbrauch ausgegeben.
 VM-Neustart ist ein nativer Button mit `virsh reboot`, ausschließlich für
 laufende VMs. Kein produktiver VM-/Containerneustart für diese Abnahme.
+
+## VM herunterfahren und sofort ausschalten
+
+Der VM-Statusschalter sendet beim Ausschalten `virsh shutdown`. Das bittet das
+Gastbetriebssystem um ein geordnetes Herunterfahren; ein erfolgreicher Befehl
+bestätigt nur die Annahme, nicht das Ende der VM. Reagiert der Gast nicht,
+steht auf demselben VM-Gerät der separate Button **Sofort ausschalten** bereit.
+Er sendet ausschließlich `virsh destroy` für genau diese VM. Das trennt die
+Stromzufuhr sinngemäß sofort und kann nicht gespeicherte Gastdaten verlieren;
+Speicherdateien und die persistente VM-Definition werden nicht gelöscht.
+Der Button ist bei ausgeschalteter oder unbekannter VM nicht verfügbar und
+verwendet niemals automatisch den harten Weg als Fallback. Die Busch-VM-Karte
+fordert vor jedem harten Ausschalten eine ausdrückliche Bestätigung.
+
+## Geprüft – 0.6.1, 01.10.2026
+
+Für Home Assistant 2026.7.0 und 2026.9.2 bestanden jeweils 195 reine und
+118 HA-Tests, dazu `pip check`. Der neue VM-Button hat eine eigene stabile
+Entity-ID, dieselbe Gerätebindung wie der Neustartbutton und die Rolle
+`force_stop`. Tests decken Shell-Quoting, den exakten `virsh destroy`-Aufruf,
+Fehler samt Statusaktualisierung, den Zustand `in_shutdown` und die Sperre bei
+ausgeschalteter VM ab. Syntax, Übersetzungen und statische UI-Regeln sind
+geprüft. Es wurde keine produktive VM-Aktion ausgeführt.

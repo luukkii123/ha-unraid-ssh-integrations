@@ -137,6 +137,7 @@
       "vm_restart": {
         "name": "Neu starten"
       },
+      "vm_force_stop": {"name": "Sofort ausschalten"},
       "container_restart": {"name": "{container} Neustart"},
       "standalone_restart": {"name": "Neustart"},
       "stack_restart": {"name": "Neustart"},

@@ -68,6 +68,41 @@ async def test_vm_native_reboot_running_only_errors_refresh(hass, monkeypatch, t
     await hass.config_entries.async_unload(entry.entry_id)
 
 
+async def test_vm_force_stop_is_separate_confirmable_button_with_active_state_guard(hass, monkeypatch, tmp_path):
+    hass.config.config_dir = str(tmp_path)
+    entry, _, _ = legacy(hass)
+    snap = replace(inventory(), vms=(parse.Vm("Guest's VM; echo nope", 'running'),))
+    await load(hass, monkeypatch, entry, snap)
+    force = loaded(hass, 'force_stop', 'vm')[0]
+    restart = loaded(hass, 'restart', 'vm')[0]
+    assert force.entity_id != restart.entity_id
+    assert force.extra_state_attributes['vm_key'] == snap.vms[0].name
+    registry = er.async_get(hass)
+    assert registry.async_get(force.entity_id).device_id == registry.async_get(restart.entity_id).device_id
+    fast = entry.runtime_data.coordinator
+    fast.client.run = AsyncMock(return_value=CommandResult(0, '', ''))
+    fast.async_request_refresh = AsyncMock()
+    await force.async_press()
+    fast.client.run.assert_awaited_once_with("virsh destroy 'Guest'\"'\"'s VM; echo nope'", timeout=30)
+    fast.async_request_refresh.assert_awaited_once()
+    fast.client.run = AsyncMock(return_value=CommandResult(1, '', 'domain is busy'))
+    fast.async_request_refresh.reset_mock()
+    with pytest.raises(HomeAssistantError):
+        await force.async_press()
+    fast.client.run.assert_awaited_once_with("virsh destroy 'Guest'\"'\"'s VM; echo nope'", timeout=30)
+    fast.async_request_refresh.assert_awaited_once()
+    fast.async_set_updated_data(replace(snap, vms=(replace(snap.vms[0], state='in_shutdown'),)))
+    await hass.async_block_till_done()
+    assert force.available
+    fast.async_set_updated_data(replace(snap, vms=(replace(snap.vms[0], state='shut_off'),)))
+    await hass.async_block_till_done()
+    assert not force.available
+    with pytest.raises(HomeAssistantError):
+        await force.async_press()
+    assert fast.client.run.await_count == 1
+    await hass.config_entries.async_unload(entry.entry_id)
+
+
 async def test_metric_compose_identity_recovers_and_follows_recreation(hass, monkeypatch, tmp_path):
     hass.config.config_dir = str(tmp_path)
     entry, _, old = legacy(hass)

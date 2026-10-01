@@ -85,6 +85,7 @@ ENTITY_ICONS: Final = {
     "check_updates": "mdi:package-down",
     "container_restart": "mdi:restart",
     "stack_restart": "mdi:restart",
+    "vm_force_stop": "mdi:power-off",
     "gpu_util": "mdi:expansion-card",
     "gpu_vram": "mdi:memory",
     "gpu_fan": "mdi:fan",
