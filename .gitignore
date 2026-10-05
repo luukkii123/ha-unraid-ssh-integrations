@@ -10,3 +10,6 @@ Thumbs.db
 
 .worktrees/
 .superpowers/
+
+.coverage
+htmlcov/

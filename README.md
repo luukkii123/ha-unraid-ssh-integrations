@@ -383,3 +383,26 @@ Entity-ID, dieselbe Gerätebindung wie der Neustartbutton und die Rolle
 Fehler samt Statusaktualisierung, den Zustand `in_shutdown` und die Sperre bei
 ausgeschalteter VM ab. Syntax, Übersetzungen und statische UI-Regeln sind
 geprüft. Es wurde keine produktive VM-Aktion ausgeführt.
+
+
+## Lokale Qualitätsprüfung – 05.10.2026
+
+HA-Bibliothekstests ohne eigenen HA-Server: Home Assistant 2026.7.0 mit
+pytest-homeassistant-custom-component 0.13.344 sowie HA 2026.9.2 mit
+0.13.365. `tests_ha/test_config_flow.py` prüft den vollständigen Config-Flow,
+Optionen und vorhandene Reauth-/Reconfigure-Schritte, Fehler-Recovery und
+Dubletten. Gemessene Zeilen- **und** Zweigabdeckung: **100 %**; der
+CI-Befehl erzwingt dies mit `--cov-branch --cov-fail-under=100`.
+Die HA-Suite umfasst 151 bestandene Tests je Matrixversion.
+
+Die bestehende Python-/PHP-Suite besteht zusätzlich mit 195 Tests je Matrixversion.
+
+Die aktuelle Bronze-Checkliste ist in `quality_scale.yaml` vollständig
+aufgeführt. `dependency-transparency` bleibt ungeklärt: Lizenz, PyPI und
+Release-Tag sind belegt, die Herkunft des konkret geprüften Pakets aus
+öffentlichem CI-Build/Publish jedoch nicht. Es wird deshalb keine vollständige
+Bronze-Stufe im Manifest beansprucht.
+
+Dies sind lokale Quellcode- und Bibliotheksnachweise; sie ersetzen keine
+Live-Abnahme und behaupten weder Veröffentlichung noch HACS-Installation.
+Aufruf und Testumgebung: [`tests_ha`](tests_ha/).
