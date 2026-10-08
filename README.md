@@ -448,3 +448,17 @@ weiter. Ein Abbruch laufender Installationen wird nicht angeboten, weil das
 Template-Skript/Compose keinen sicheren transaktionalen Abbruch garantiert.
 Statusdateien enthalten nur Phasen/Exitcode; weder Skriptausgabe noch private
 Verbindungsdaten werden in HA-Fehlerattribute übernommen.
+
+
+## Geprüft – 0.7.0, 08.10.2026
+
+Dauerhafte serielle Updatequeue mit atomarer Aufnahme, Wiederaufnahme nach
+Reload und belastbarer Abschlussprüfung: jeweils 207 reine und 152 echte
+HA-Tests auf HA 2026.7.0 und 2026.9.2 bestanden; Configflow-Zeilen und
+-Zweige 100 %. Sichere Compose-Phasenerzeugung auch bei ungewöhnlichen
+Datei-/Zielnamen mit realer Shell-Gegenprobe geprüft. Unabhängiger Review
+ohne blockierenden Befund; statische UI-/Übersetzungsprüfung ohne Verstoß.
+Die zugehörige Busch-Queueanzeige bestand 216 bewachte native Browserfälle
+mit sechs Breiten und beiden Themes. Keine produktiven Container- oder
+VM-Updateaktionen zur Abnahme. Alle Regelbelege und Grenzen:
+[Updatequeue-Abnahme](docs/update-queue-abnahme-2026-10-08.md).
