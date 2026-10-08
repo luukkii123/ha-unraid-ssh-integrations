@@ -14,7 +14,11 @@ Tatsächlich ausgeführt: reine Suite im vorhandenen `unraid-ssh-tests` und
 `unraid-ssh-tests-2607` mit `-p no:homeassistant`; echte HA-Suite in beiden
 Images mit `tests_ha/pytest.ini` und ConfigFlow-Zweigcoverage 100%. HA 2026.9.2
 und 2026.7.0: jeweils 152 HA-Tests bestanden; reine Suite final
-206 bestanden, einschließlich Duplicate-after-failure-Fall. Queue prüft 1/2/5
+207 bestanden, einschließlich Duplicate-after-failure und ungewöhnlicher
+shellquotierter Compose-Pfade. Unabhängiger Review durch zweiten Agenten
+fand P2: Shellstring-Aufteilung kollidiert mit legalen Pfadteilen ` && `/
+`docker compose`. Behoben durch strukturierten gemeinsamen Phasenbuilder;
+27 Queue-/Actiontests zusätzlich unabhängig bestanden. Queue prüft 1/2/5
 Ziele, Mittel-Fehler, konkurrierende Batch-/Einzelaufnahme, Storefehler,
 Reload/Neustart mit laufendem Job, Verbindungsabbruch, Timeout, echte lokale
 Shell-Mkdir-Idempotenz und Pfadvalidierung. Ein zusätzlicher echter HA-Test
@@ -59,6 +63,6 @@ synthetisch; kein produktiver Update-/Container-/VM-Schaltversuch.
 | R26 | Neue Labels und klare Fehler Deutsch/Englisch, Terminologie Unraid/SSH/Compose/Image erhalten; Übersetzungstests. |
 
 Private Browserartefakte liegen außerhalb Git unter dem lokalen Codex-
-Verzeichnis `hacs-unraid-queue` (native/synthetic). Unabhängiger Review,
+Verzeichnis `hacs-unraid-queue` (native/synthetic). Unabhängiger Queue-/Actionsreview abgeschlossen;
 Veröffentlichung und Liveinstallation werden durch den koordinierenden Agenten
 abgeschlossen; Todo noch nicht erledigt. Keine Vollabnahme von #139 behauptet.

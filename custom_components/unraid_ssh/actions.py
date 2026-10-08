@@ -57,25 +57,31 @@ def container_update_cmd(container: Container, stack: Stack | None) -> str:
     """
     if stack is None or not container.service:
         return f"{UPDATE_CONTAINER_SH} {_q(container.name)}"
-    # Built from parts and joined once, like _plain_compose_cmd below: a global
-    # space collapse would also eat a double space inside a quoted path.
+    compose, prefix, service = _container_compose_context(container, stack)
+    return f"{prefix}{compose} pull {service} && {compose} up -d {service}"
+
+
+def _container_compose_context(container: Container, stack: Stack) -> tuple[str, str, str]:
     parts = ["docker", "compose"]
     if stack.folder:
-        parts.append('"$@"')          # the --env-file argument, or nothing
+        parts.append('"$@"')
     parts += ["-p", _q(stack.name)]
     for path in stack.config_files:
         parts += ["-f", _q(path)]
     compose = " ".join(parts)
-    service = _q(container.service)
-    run = f"{compose} pull {service} && {compose} up -d {service}"
-    if not stack.folder:
-        return run                    # no folder: no .env to look for, nowhere to cd
-    folder = stack.folder.rstrip("/")
-    env = _q(f"{folder}/.env")
-    return (
-        f"if [ -f {env} ]; then set -- --env-file {env}; else set --; fi && "
-        f"cd {_q(folder)} && {run}"
-    )
+    prefix = ""
+    if stack.folder:
+        folder = stack.folder.rstrip("/")
+        env = _q(f"{folder}/.env")
+        prefix = (f"if [ -f {env} ]; then set -- --env-file {env}; else set --; fi && "
+                  f"cd {_q(folder)} && ")
+    return compose, prefix, _q(container.service)
+
+
+def container_update_phases(container: Container, stack: Stack) -> tuple[str, str]:
+    """Structured phases: never parse a shell-quoted command to split it."""
+    compose, prefix, service = _container_compose_context(container, stack)
+    return f"{prefix}{compose} pull {service}", f"{prefix}{compose} up -d {service}"
 
 
 # --- compose stacks -----------------------------------------------------------------

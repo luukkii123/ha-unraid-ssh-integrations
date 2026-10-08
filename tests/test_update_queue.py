@@ -155,3 +155,27 @@ def test_repeated_batch_does_not_requeue_terminal_members_while_tail_runs():
         await queue.enqueue(containers)
         assert len(queue.jobs)==3 and queue.jobs[0]["state"]=="failed"
     asyncio.run(scenario())
+
+
+def test_compose_phase_builder_does_not_split_quoted_path_contents(tmp_path,monkeypatch):
+    import time
+    from unraid_ssh.model import Stack
+    folder=tmp_path/'folder && docker compose odd'
+    folder.mkdir()
+    (folder/'.env').write_text('DEMO=yes\n')
+    config=folder/'compose && docker compose file.yaml'
+    config.write_text('fixture')
+    calls=tmp_path/'calls.jsonl'
+    docker=tmp_path/'docker'
+    # argv is captured exactly, including paths with shell-looking delimiters.
+    docker.write_text('#!/usr/bin/env python3\nimport sys,json\nwith open('+repr(str(calls))+',"a") as f:f.write(json.dumps(sys.argv[1:])+"\\n")\n')
+    docker.chmod(0o755)
+    c=Container('web','running','example/app','project','svc && strange',replica=1)
+    stack=Stack('project','project',str(folder),False,True,1,(str(config),),(c,))
+    pull,recreate=q.actions.container_update_phases(c,stack)
+    import os,json
+    env={**os.environ,'PATH':str(tmp_path)+':'+os.environ['PATH']}
+    for cmd in [pull,recreate]:subprocess.run(['sh','-c',cmd],env=env,check=True,capture_output=True)
+    recorded=[json.loads(line) for line in calls.read_text().splitlines()]
+    assert recorded==[['compose','--env-file',str(folder/'.env'),'-p','project','-f',str(config),'pull','svc && strange'],
+                      ['compose','--env-file',str(folder/'.env'),'-p','project','-f',str(config),'up','-d','svc && strange']]

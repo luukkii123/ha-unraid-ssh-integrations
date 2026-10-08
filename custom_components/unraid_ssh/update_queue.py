@@ -40,9 +40,8 @@ def launch_command(job: dict) -> str:
     path = shlex.quote(job_path(job["id"]))
     phase = "pulling" if job["compose"] else "updating"
     command = job["command"]
-    # Compose's fixed builder emits this exact delimiter once.
     if job["compose"]:
-        pull, recreate = command.split(" && ", 1) if not job.get("split_command") else job["split_command"]
+        pull, recreate = job["split_command"]
         body = f"{pull}; r=$?; if [ $r -eq 0 ]; then mark recreating; {recreate}; r=$?; fi"
     else:
         body = f"{command}; r=$?"
@@ -130,10 +129,7 @@ class UpdateQueue:
                 compose = bool(stack and container.service)
                 split_command = None
                 if compose:
-                    # Retain environment setup for both phases (two independent shells).
-                    pull, recreate = command.rsplit(" && ", 1)
-                    prefix = pull[:pull.rfind("docker compose")]
-                    split_command = [pull, prefix + recreate]
+                    split_command = actions.container_update_phases(container, stack)
                 accepted.append({"id": uuid.uuid4().hex, "key": key, "name": container.name,
                                  "stack": container.project, "state": "queued", "queued_at": now(),
                                  "started_at": None, "finished_at": None, "last_error": None,
