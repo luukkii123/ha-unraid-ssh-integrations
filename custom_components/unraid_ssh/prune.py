@@ -41,7 +41,7 @@ _ENTITY_SECTIONS: tuple[tuple[tuple[str, ...], frozenset[str]], ...] = (
     # `compose` and `stacks`; `docker` is added because a stack that exists
     # purely through its containers' labels would otherwise vanish from the
     # snapshot whenever `docker ps` fails.
-    (("stack_", "restart_stack_"), frozenset({"docker", "compose", "stacks"})),
+    (("stack_", "restart_stack_", "update_all_stack_"), frozenset({"docker", "compose", "stacks"})),
     (("vm_", "vm_state_", "restart_vm_"), frozenset({"vms"})),
     (("disk_temp_", "disk_usage_", "disk_status_", "disk_spundown_"), frozenset({"disks"})),
     (("share_used_", "share_free_"), frozenset({"shares"})),

@@ -69,6 +69,7 @@
   },
   "entity": {
     "sensor": {
+      "update_queue": {"name": "Update-Warteschlange", "state": {"idle": "Abgeschlossen", "active": "Aktiv", "blocked": "Wartet auf Klärung"}},
       "container_cpu": {
         "name": "{container} CPU-Auslastung"
       },
@@ -134,6 +135,8 @@
       "disk_spundown": {"name": "Standby"}
     },
     "button": {
+      "update_all": {"name": "Alle Updates installieren"},
+      "stack_update_all": {"name": "Alle Container aktualisieren"},
       "vm_restart": {
         "name": "Neu starten"
       },

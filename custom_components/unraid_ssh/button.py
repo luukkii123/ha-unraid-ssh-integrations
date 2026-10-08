@@ -19,7 +19,7 @@ from .entity import (
     device_for_container, server_device, stack_device, track_new,
 )
 from .model import (
-    Snapshot, container_key, find_container_by_key, find_stack_by_key,
+    Snapshot, container_updatable, find_stack, container_key, find_container_by_key, find_stack_by_key,
     find_vm, stack_key, stack_metadata, stack_restartable,
 )
 from .parse import Container
@@ -35,6 +35,43 @@ class CheckUpdatesButton(UnraidEntity, ButtonEntity):
         await updates.async_check_now()
         if not updates.last_update_success:
             raise HomeAssistantError(f"unraid_ssh: update check failed: {updates.last_exception}")
+
+
+UPDATE_ALL = ButtonEntityDescription(key="update_all")
+STACK_UPDATE_ALL = ButtonEntityDescription(key="stack_update_all")
+
+
+class UpdateAllButton(UnraidEntity, ButtonEntity):
+    """One atomic admission for all available, installable targets in scope."""
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        queue = self.coordinator.entry.runtime_data.queue
+        if queue:
+            self.async_on_remove(queue.listen(self.async_write_ha_state))
+
+    @property
+    def extra_state_attributes(self):
+        runtime = self.coordinator.entry.runtime_data
+        stack = self.item if self.entity_description.key == "stack_update_all" else None
+        attrs = stack_metadata(stack, self.coordinator.entry.entry_id, "update_all") if stack else {"kind": "server", "role": "update_all"}
+        return {**attrs, "update_queue": runtime.queue.summary(stack.name if stack else None)} if runtime.queue else attrs
+
+    async def async_press(self):
+        runtime = self.coordinator.entry.runtime_data
+        snapshot = self.coordinator.data
+        stack = self.item if self.entity_description.key == "stack_update_all" else None
+        if not snapshot or (self.entity_description.key == "stack_update_all" and not stack):
+            raise HomeAssistantError("Updateziele fehlen. Unraid-Verbindung prüfen.")
+        images = runtime.updates.data.images if runtime.updates.data else {}
+        containers = [c for c in snapshot.containers
+                      if (not stack or c.project == stack.name)
+                      and images.get(c.name) and images[c.name].update_available
+                      and can_register_container(self.coordinator, c, "update")
+                      and container_updatable(c, find_stack(snapshot, c.project) if c.project else None)]
+        try:
+            await runtime.queue.enqueue(containers)
+        except actions.ActionError as err:
+            raise HomeAssistantError(str(err)) from err
 
 
 CONTAINER_RESTART = ButtonEntityDescription(key="container_restart")
@@ -128,6 +165,7 @@ def _plan(coordinator: UnraidCoordinator, snapshot: Snapshot) -> Iterator[tuple[
         force_key = f"force_stop_vm_{vm.name}"
         yield force_key, partial(VmForceStopButton, coordinator, VM_FORCE_STOP,
                                  vm_device(coordinator, vm), force_key, vm.name, find_vm)
+    yield UPDATE_ALL.key, partial(UpdateAllButton, coordinator, UPDATE_ALL, server_device(coordinator), UPDATE_ALL.key)
     yield CHECK.key, partial(CheckUpdatesButton, coordinator, CHECK, server_device(coordinator), CHECK.key)
     for container in snapshot.containers:
         key = f"restart_container_{container_key(snapshot, container)}"
@@ -139,6 +177,9 @@ def _plan(coordinator: UnraidCoordinator, snapshot: Snapshot) -> Iterator[tuple[
         make = partial(RestartButton, coordinator, STACK_RESTART, stack_device(coordinator, stack),
                        f"restart_stack_{key}", key, find_stack_by_key)
         yield f"restart_stack_{key}", make if readable and stack_restartable(stack) else None
+        yield f"update_all_stack_{key}", (partial(UpdateAllButton, coordinator, STACK_UPDATE_ALL,
+            stack_device(coordinator, stack), f"update_all_stack_{key}", key, find_stack_by_key)
+            if readable else None)
 
 
 def expected_keys(coordinator: UnraidCoordinator, snapshot: Snapshot) -> set[str]:

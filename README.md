@@ -406,3 +406,45 @@ Bronze-Stufe im Manifest beansprucht.
 Dies sind lokale Quellcode- und Bibliotheksnachweise; sie ersetzen keine
 Live-Abnahme und behaupten weder Veröffentlichung noch HACS-Installation.
 Aufruf und Testumgebung: [`tests_ha`](tests_ha/).
+
+### Update-Warteschlange (ab 0.7.0)
+
+„Alle Updates installieren“ am Server und „Alle Container aktualisieren“ am
+Stack nehmen alle aktuell verfügbaren, installierbaren Ziele atomar auf.
+Einzelupdates verwenden dieselbe serielle Warteschlange. Doppelte Aufträge für
+ein Ziel desselben noch aktiven Batches werden zusammengeführt (erneuter
+Versuch eines gescheiterten Ziels erst nach Batchende); Stack und
+Container erzeugen keine konkurrierenden Jobs.
+
+Die bisherigen `update.*`-Entitäten behalten ihre IDs und melden
+`in_progress: true` für wartende **und** laufende Aufträge. Zusätzliche Attribute:
+`update_state`, `progress_percent`, `queue_position`, `queued_at`, `started_at`,
+`finished_at`, `last_error`, `update_queue` und `stack_update_queue`.
+Phasen sind `idle`, `queued`, `preparing`, `pulling`, `updating`, `recreating`,
+`verifying`, `completed`, `failed`. Die Queue-Position zählt die noch wartenden
+Ziele ab 1. Der Server-Sensor „Update-Warteschlange“ sowie beide Update-All-
+Buttons liefern globale bzw. Stack-Zähler, aktuelles Ziel und Blockadestatus.
+Gesamtprozent bedeutet **abgearbeitete Ziele** (`completed + failed`) / `total`;
+Erfolg und Fehler werden getrennt gezählt. Nach Abschluss bleibt der Bericht
+bis zum nächsten neuen Auftrag sichtbar. Ohne aktiven Auftrag startet ein
+neuer Batch; innerhalb eines aktiven Batches werden neue Ziele angehängt.
+
+Compose veröffentlicht echte Pull-/Recreate-Phasen. Unraids Template-Updater
+liefert nur den laufenden Skriptzustand. Beide liefern keine belastbare
+Byteaggregation: `progress_percent` je Ziel bleibt ausdrücklich `null`.
+Abgeschlossen bedeutet: Backendbefehl beendet **und** erneuter Inventar-/
+Registryvergleich bestätigt das installierte Image. Bekannt fehlgeschlagene
+Updates blockieren die übrigen Ziele nicht; Fehlertext und Zähler bleiben.
+
+Aufträge werden vor Ausführung in HAs lokaler `.storage` gespeichert. Der
+idempotente Backendjob überlebt Integration-Reload und HA-Neustart; HA beobachtet
+anschließend dieselbe zufällige Job-ID, statt erneut zu installieren. Laufende
+Jobs liegen im flüchtigen `/run` auf Unraid. Verbindungsabbrüche, fehlender
+Backendstatus (etwa nach Unraid-Neustart) und überschrittene Laufzeit lassen
+den Auftrag **aktiv/blockiert**, einschließlich wartender Ziele. Keine
+ungeklärte Installation wird blind wiederholt oder als fertig/idle dargestellt.
+Unraid-Verbindung bzw. Backendjob prüfen; die Queue beobachtet automatisch
+weiter. Ein Abbruch laufender Installationen wird nicht angeboten, weil das
+Template-Skript/Compose keinen sicheren transaktionalen Abbruch garantiert.
+Statusdateien enthalten nur Phasen/Exitcode; weder Skriptausgabe noch private
+Verbindungsdaten werden in HA-Fehlerattribute übernommen.

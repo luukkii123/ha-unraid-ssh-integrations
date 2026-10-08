@@ -22,7 +22,6 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import actions
-from .const import UPDATE_TIMEOUT
 from .coordinator import UnraidConfigEntry, UnraidCoordinator, UpdateCoordinator, UpdateState
 from .entity import ContainerPictureMixin, can_register_container, device_for_container, track_new
 from .model import ImageStatus, Snapshot, container_updatable, container_key, find_stack
@@ -55,6 +54,8 @@ class ContainerUpdate(ContainerPictureMixin, CoordinatorEntity[UpdateCoordinator
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
         self.async_on_remove(self._fast.async_add_listener(self.async_write_ha_state))
+        if self._queue:
+            self.async_on_remove(self._queue.listen(self.async_write_ha_state))
 
     @property
     def _status(self) -> ImageStatus | None:
@@ -76,11 +77,11 @@ class ContainerUpdate(ContainerPictureMixin, CoordinatorEntity[UpdateCoordinator
         if container is None:
             return UpdateEntityFeature(0)
         stack = find_stack(snapshot, container.project) if container.project else None
-        return UpdateEntityFeature.INSTALL if container_updatable(container, stack) else UpdateEntityFeature(0)
+        return UpdateEntityFeature.INSTALL | UpdateEntityFeature.PROGRESS if container_updatable(container, stack) else UpdateEntityFeature.PROGRESS
 
     @property
     def available(self) -> bool:
-        return super().available and self._status is not None
+        return self.in_progress or (super().available and self._status is not None)
 
     @property
     def title(self) -> str | None:
@@ -99,36 +100,31 @@ class ContainerUpdate(ContainerPictureMixin, CoordinatorEntity[UpdateCoordinator
             return None                          # HA shows "unknown"
         return _short(status.local_digest) if status.update_available is False else _short(status.remote_digest)
 
-    async def async_install(self, version: str | None, backup: bool, **kwargs: Any) -> None:
-        """Pull and recreate. Can take minutes; the timeout is UPDATE_TIMEOUT.
+    @property
+    def _queue(self):
+        return self._fast.entry.runtime_data.queue
 
-        Progress is not flagged here on purpose: this entity does not declare
-        `UpdateEntityFeature.PROGRESS`, and for that case Home Assistant's own
-        `UpdateEntity.async_install_with_progress` sets its internal flag before
-        calling this and clears it in a `finally` -- and `state_attributes` then
-        reports *that* flag, not `_attr_in_progress`. Setting the attribute here
-        would be invisible.
-        """
-        snapshot = self._fast.data
+    @property
+    def in_progress(self) -> bool:
+        from .update_queue import ACTIVE
+        job = self._queue.target(self._container_key) if self._queue else None
+        return bool(job and job["state"] in ACTIVE)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        attrs = super().extra_state_attributes or {}
+        return {**attrs, **(self._queue.attributes(self._container_key) if self._queue else {})}
+
+    async def async_install(self, version: str | None, backup: bool, **kwargs: Any) -> None:
         container = self.current_container
         if container is None:
-            raise HomeAssistantError(f"unraid_ssh: container {self._name} is not present")
-        stack = find_stack(snapshot, container.project) if container.project else None
-        if not container_updatable(container, stack):
-            raise HomeAssistantError(
-                f"unraid_ssh: {self._name} has no compose file to update from"
-            )
+            raise HomeAssistantError("Container fehlt. Unraid-Verbindung prüfen.")
+        if not self._queue:
+            raise HomeAssistantError("Update-Warteschlange fehlt. Integration neu laden.")
         try:
-            await actions.run_action(self._fast.client, actions.container_update_cmd(container, stack), UPDATE_TIMEOUT)
+            await self._queue.enqueue([container])
         except actions.ActionError as err:
-            raise HomeAssistantError(f"unraid_ssh: update of {self._name} failed: {err}") from err
-        finally:
-            # Also after a failure, the way switch._run does it: a pull + up -d
-            # that ran into its timeout has very likely recreated the container
-            # already. Without this the counter and this entity would keep
-            # claiming "update available" for up to six hours.
-            await self._fast.async_request_refresh()
-            await self.coordinator.async_request_refresh()
+            raise HomeAssistantError(str(err)) from err
 
 
 def _plan(

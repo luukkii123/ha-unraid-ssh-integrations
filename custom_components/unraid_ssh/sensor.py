@@ -45,6 +45,21 @@ from .model import (
 from .parse import HwSensor, sensor_key, temp_plausible
 
 
+class UpdateQueueSensor(UnraidEntity, SensorEntity):
+    @property
+    def native_value(self):
+        q = self.coordinator.entry.runtime_data.queue.summary()
+        return "blocked" if q["blocked"] else "active" if q["active"] else "idle"
+
+    @property
+    def extra_state_attributes(self):
+        return self.coordinator.entry.runtime_data.queue.summary()
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        self.async_on_remove(self.coordinator.entry.runtime_data.queue.listen(self.async_write_ha_state))
+
+
 @dataclass(frozen=True, kw_only=True)
 class UnraidSensorDescription(SensorEntityDescription):
     value_fn: Callable[[Any], Any]     # receives the item (Snapshot, Gpu, Disk or Share)
@@ -339,6 +354,7 @@ def _plan(coordinator: UnraidCoordinator, snapshot: Snapshot) -> Iterator[Planne
     the next poll, and none of them is an orphan.
     """
     server = server_device(coordinator)
+    yield "update_queue", partial(UpdateQueueSensor, coordinator, SensorEntityDescription(key="update_queue"), server, "update_queue")
     for desc in SERVER:
         yield desc.key, partial(UnraidSensor, coordinator, desc, server, desc.key)
     for share in snapshot.shares:

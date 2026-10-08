@@ -15,6 +15,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryError
 from homeassistant.helpers.device_registry import DeviceEntry
 from homeassistant.helpers.translation import async_get_translations
+from homeassistant.helpers.storage import Store
+from .update_queue import UpdateQueue
 
 from .const import DOMAIN
 from .coordinator import (
@@ -63,6 +65,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: UnraidConfigEntry) -> bo
     icons = ContainerIconCache(hass, entry.entry_id, client, local_enabled=local_icons)
     entry.runtime_data = UnraidRuntime(client=client, coordinator=coordinator, updates=updates, icons=icons)
 
+    queue = UpdateQueue(hass, entry, coordinator, updates, Store(hass, 1, f"{DOMAIN}_update_queue_{entry.entry_id}"))
+    entry.runtime_data.queue = queue
+    await queue.load()
+
     # Direct device creation precedes platform translation loading.
     await async_get_translations(hass, hass.config.language, "device", {DOMAIN})
     async_reconcile_devices(hass, entry)
@@ -85,6 +91,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: UnraidConfigEntry) -> bo
     try:
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     except BaseException:
+        await queue.close()
         await icons.async_shutdown()
         raise
     async_reconcile_devices(hass, entry)
@@ -108,6 +115,8 @@ async def async_remove_config_entry_device(
 
 async def async_unload_entry(hass: HomeAssistant, entry: UnraidConfigEntry) -> bool:
     if unloaded := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
+        if entry.runtime_data.queue:
+            await entry.runtime_data.queue.close()
         await entry.runtime_data.icons.async_shutdown()
     return unloaded
 

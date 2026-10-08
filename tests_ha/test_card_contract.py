@@ -183,10 +183,11 @@ async def test_update_follows_recreated_container_and_install_uses_current_servi
     fast.async_request_refresh = AsyncMock()
     slow.async_request_refresh = AsyncMock()
     await update.async_install(None, False)
-    command = fast.client.run.call_args.args[0]
+    command = next(call.args[0] for call in fast.client.run.call_args_list if 'nohup' in call.args[0])
     assert ' pull web' in command and ' up -d web' in command
-    fast.async_request_refresh.assert_awaited_once()
-    slow.async_request_refresh.assert_awaited_once()
+    assert update.in_progress and update.extra_state_attributes['update_state'] in {'preparing','pulling'}
+    fast.async_request_refresh.assert_not_awaited()
+    slow.async_request_refresh.assert_not_awaited()
     await hass.config_entries.async_unload(entry.entry_id)
 
 
@@ -202,7 +203,7 @@ async def test_update_install_exposes_real_in_progress_without_invented_percenta
     async def delayed_run(command, timeout):
         started.set()
         await finish.wait()
-        return CommandResult(0, '', '')
+        return CommandResult(0, 'verifying', '')
 
     fast.client.run = AsyncMock(side_effect=delayed_run)
     fast.async_request_refresh = AsyncMock()
@@ -211,9 +212,13 @@ async def test_update_install_exposes_real_in_progress_without_invented_percenta
     await started.wait()
     assert update.state_attributes['in_progress'] is True
     assert update.state_attributes['update_percentage'] is None
-    finish.set()
     await install
+    assert update.state_attributes['in_progress'] is True
+    slow.data.images['old-web'] = ImageStatus('old-web','example/web','sha256:new','sha256:new',False)
+    finish.set()
+    await entry.runtime_data.queue._task
     assert update.state_attributes['in_progress'] is False
+    assert update.extra_state_attributes['update_state'] == 'completed'
     fast.async_request_refresh.assert_awaited_once()
     slow.async_request_refresh.assert_awaited_once()
     await hass.config_entries.async_unload(entry.entry_id)

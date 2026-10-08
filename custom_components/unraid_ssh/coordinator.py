@@ -59,6 +59,7 @@ class UnraidRuntime:
     coordinator: "UnraidCoordinator"
     updates: "UpdateCoordinator"                 # always set in async_setup_entry
     icons: "ContainerIconCache"
+    queue: Any = None
     server_device_id: str | None = None
     device_infos: dict[str, dict[str, Any]] = field(default_factory=dict)
     #: Unique id -> the first successful poll that did not expect it any more.
