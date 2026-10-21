@@ -1,0 +1,7 @@
+@@@ remote
+ghcr.io/esphome/esphome:stable	sha256:f21f076c15d26a775ebdf598958df1d1c5d3762d198f0c2f4accef43bc1974de
+amir20/dozzle:latest	sha256:2f749cc8a569bdf5aaf48b03aefa1783ce1087a8cc87219eaa0cd33a14509968
+lscr.io/linuxserver/radarr:latest	sha256:2eb4900c0e60538ffd233c81f307332eed4b0d8837a0c641b37fc3639b74bc29
+synthetic-fixture-value:16-alpine	sha256:c5f65ab2d250205612e7a09e5fa41e2a6667850fa32a44f79dd77ac1021115f9
+does-not-exist/nope:latest	
+@@@ end

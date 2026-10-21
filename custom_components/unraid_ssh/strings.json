@@ -1,0 +1,186 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Unraid SSH",
+        "description": "Address of the Unraid server. The next step shows the SSH key this integration generates for itself — no password is stored.",
+        "data": {
+          "host": "Host",
+          "port": "SSH port",
+          "name": "Name"
+        },
+        "data_description": {
+          "host": "IP address or host name of the Unraid server, without protocol; the SSH port is a separate field.",
+          "port": "Port of the SSH service on Unraid; default 22, see Settings → Management Access.",
+          "name": "Title of the entry in Home Assistant; it also becomes the prefix of every entity id, so keep it distinct from other Unraid integrations."
+        }
+      },
+      "key": {
+        "title": "Authorize the key on Unraid",
+        "description": "Run both lines once in the Unraid terminal (as root). The first survives a reboot, the second takes effect immediately. Then submit — the integration tests the connection with this key before anything is saved.\n\nFingerprint: {fingerprint}\n\n```\n{pubkeys_line}\n{authorized_line}\n```",
+        "data": {},
+        "data_description": {}
+      },
+      "reauth_confirm": {
+        "title": "Unraid rejected the connection",
+        "description": "Either the key is no longer authorized on {host}, or the server's host key changed. Host key fingerprint: {host_key_fingerprint}. Re-authorize the key with the lines below, and tick the box only if you know why the host key changed.\n\n```\n{pubkeys_line}\n{authorized_line}\n```",
+        "data": {
+          "accept_host_key": "Accept the new host key"
+        },
+        "data_description": {
+          "accept_host_key": "Trust the host key the server presents now; leave off unless Unraid was reinstalled or its SSH keys were regenerated."
+        }
+      },
+      "reconfigure": {
+        "title": "Change address",
+        "description": "New host or port; the SSH key stays the same and is tested against the new address.",
+        "data": {
+          "host": "Host",
+          "port": "SSH port"
+        },
+        "data_description": {
+          "host": "IP address or host name of the Unraid server, without protocol.",
+          "port": "Port of the SSH service on Unraid; default 22."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "The server could not be reached on that host and port.",
+      "key_rejected": "The server rejected the key — has it been added to root.pubkeys and authorized_keys?",
+      "host_key_changed": "The server's host key differs from the stored one.",
+      "not_unraid": "The connection worked, but the server does not look like Unraid (no var.ini).",
+      "key_unreadable": "The stored SSH key could not be read; remove the entry and set it up again."
+    },
+    "abort": {
+      "already_configured": "This host and port are already set up.",
+      "reauth_successful": "The connection works again.",
+      "reconfigure_successful": "The new address works."
+    },
+    "create_entry": {
+      "default": "Connected to {server} (Unraid {version})."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Unraid SSH options",
+        "description": "How often to poll, and how often to check images for updates.",
+        "data": {
+          "scan_interval": "Polling interval",
+          "update_interval": "Update check interval"
+        },
+        "data_description": {
+          "scan_interval": "Seconds between two SSH polls of system, disks, containers and VMs; default 30, allowed 10 to 300.",
+          "update_interval": "Hours between two checks of the container images against their registries; default 6, allowed 1 to 24. The button on the server device runs a check at any time."
+        }
+      }
+    }
+  },
+  "device": {
+    "container": {"name": "{prefix} {component}"},
+    "disk": {"name": "{prefix} Disk {component}"},
+    "stack": {"name": "{prefix} Stack {component}"},
+    "vm": {"name": "{prefix} VM {component}"},
+    "standalone_containers": {"name": "{prefix} Standalone containers"},
+    "share": {"name": "{prefix} Share {component}"}
+  },
+  "entity": {
+    "sensor": {
+      "update_queue": {"name": "Update queue", "state": {"idle": "Idle", "active": "Active", "blocked": "Waiting for recovery"}},
+      "container_cpu": {
+        "name": "{container} CPU usage"
+      },
+      "standalone_cpu": {
+        "name": "CPU usage"
+      },
+      "container_ram_used": {
+        "name": "{container} RAM used"
+      },
+      "standalone_ram_used": {
+        "name": "RAM used"
+      },
+      "container_ram_limit": {
+        "name": "{container} RAM limit"
+      },
+      "standalone_ram_limit": {
+        "name": "RAM limit"
+      },
+      "vm_cpu": {
+        "name": "CPU usage"
+      },
+      "vm_ram_used": {
+        "name": "Guest RAM used"
+      },
+      "vm_ram_allocated": {
+        "name": "RAM allocated"
+      },
+      "vm_ram_max": {
+        "name": "Maximum RAM"
+      },
+      "vm_ram_host_rss": {
+        "name": "Host RAM (RSS)"
+      },
+      "cpu_percent": {"name": "CPU usage"},
+      "ram_percent": {"name": "Memory usage"},
+      "load_1": {"name": "System load (1 min)"},
+      "uptime": {"name": "Last boot"},
+      "array_state": {
+        "name": "Array state",
+        "state": {"started": "Started", "stopped": "Stopped", "starting": "Starting", "stopping": "Stopping", "unknown": "Unknown"}
+      },
+      "parity_progress": {"name": "Parity check progress"},
+      "parity_errors": {"name": "Parity errors"},
+      "cpu_temp": {"name": "CPU temperature"},
+      "board_temp": {"name": "Board temperature"},
+      "hw_temp": {"name": "Temperature {chip} {label}"},
+      "fan_rpm": {"name": "Fan {label} speed"},
+      "fan_percent": {"name": "Fan {label} PWM duty"},
+      "updates_available": {"name": "Containers with updates"},
+      "share_used": {"name": "Used space"},
+      "share_free": {"name": "Free space"},
+      "gpu_util": {"name": "GPU {index} {gpu} utilization"},
+      "gpu_vram": {"name": "GPU {index} {gpu} VRAM usage"},
+      "gpu_temp": {"name": "GPU {index} {gpu} temperature"},
+      "gpu_power": {"name": "GPU {index} {gpu} power draw"},
+      "gpu_fan": {"name": "GPU {index} {gpu} fan speed"},
+      "disk_temp": {"name": "Temperature"},
+      "disk_usage": {"name": "Usage"},
+      "disk_status": {
+        "name": "Status",
+        "state": {"ok": "OK", "new": "New", "disabled": "Disabled", "invalid": "Invalid", "missing": "Missing", "not_present": "Not present", "unknown": "Unknown"}
+      },
+      "vm_state": {
+        "name": "Operating state",
+        "state": {"running": "Running", "shut_off": "Shut off", "paused": "Paused", "in_shutdown": "Shutting down", "crashed": "Crashed", "pmsuspended": "Suspended", "idle": "Idle", "unknown": "Unknown"}
+      }
+    },
+    "binary_sensor": {
+      "array_started": {"name": "Array started"},
+      "parity_running": {"name": "Parity check running"},
+      "mover_active": {"name": "Mover active"},
+      "disk_spundown": {"name": "Standby"}
+    },
+    "button": {
+      "update_all": {"name": "Install all updates"},
+      "stack_update_all": {"name": "Update all containers"},
+      "vm_restart": {
+        "name": "Restart"
+      },
+      "vm_force_stop": {"name": "Force stop"},
+      "container_restart": {"name": "{container} restart"},
+      "standalone_restart": {"name": "Restart"},
+      "stack_restart": {"name": "Restart"},
+      "check_updates": {"name": "Check for updates"}
+    },
+    "switch": {
+      "container": {"name": "{container} status"},
+      "standalone_container": {"name": "Status"},
+      "stack": {"name": "Status"},
+      "vm": {"name": "Status"}
+    },
+    "update": {
+      "standalone_update": {"name": "Update"},
+      "container_update": {"name": "{container} update"}
+    }
+  }
+}

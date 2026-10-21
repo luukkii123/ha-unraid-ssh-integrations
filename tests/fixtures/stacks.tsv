@@ -1,0 +1,13 @@
+/boot/config/plugins/compose.manager/projects/Stack-Beta/	Stack-Beta	false
+/boot/config/plugins/compose.manager/projects/Webstack/	Webstack	true
+/boot/config/plugins/compose.manager/projects/Stack-Delta/	Stack Delta	false
+/boot/config/plugins/compose.manager/projects/Cardbox/	Cardbox	true
+/boot/config/plugins/compose.manager/projects/Arcade/	Arcade	
+/boot/config/plugins/compose.manager/projects/Immich/	Immich	true
+/boot/config/plugins/compose.manager/projects/Cachenode/	Cachenode	true
+/boot/config/plugins/compose.manager/projects/Mediaget/	Mediaget	true
+/boot/config/plugins/compose.manager/projects/Paperless/	Paperless	true
+/boot/config/plugins/compose.manager/projects/Toolbox/	Toolbox	true
+/boot/config/plugins/compose.manager/projects/Smarthome/	Smarthome	true
+/boot/config/plugins/compose.manager/projects/Streaming/	Streaming	true
+/boot/config/plugins/compose.manager/projects/net-bridge/		true

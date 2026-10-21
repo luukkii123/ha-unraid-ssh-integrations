@@ -1,0 +1,29 @@
+nvme	nvme0	temp1	Composite	51850		
+nvme	nvme0	temp2	Sensor 1	51850		
+nvme	nvme0	temp3	Sensor 2	62850		
+nvme	nvme0	temp9	Sensor 8	51850		
+k10temp	0000:00:18.3	temp1	Tctl	71750		
+k10temp	0000:00:18.3	temp3	Tccd1	73250		
+k10temp	0000:00:18.3	temp4	Tccd2	57500		
+nct6798	nct6775.656	temp10	PCH_CHIP_TEMP	0		
+nct6798	nct6775.656	temp11	PCH_CPU_TEMP	0		
+nct6798	nct6775.656	temp12	PCH_MCH_TEMP	0		
+nct6798	nct6775.656	temp13	TSI0_TEMP	71375		
+nct6798	nct6775.656	temp1	SYSTIN	43000		
+nct6798	nct6775.656	temp2	CPUTIN	57000		
+nct6798	nct6775.656	temp3	AUXTIN0	71000		
+nct6798	nct6775.656	temp4	AUXTIN1	55000		
+nct6798	nct6775.656	temp5	AUXTIN2	-59000		
+nct6798	nct6775.656	temp6	AUXTIN3	68000		
+nct6798	nct6775.656	temp7	AUXTIN4	43000		
+nct6798	nct6775.656	temp8	PECI Agent 0 Calibration	60000		
+nct6798	nct6775.656	temp9	PCH_CHIP_CPU_MAX_TEMP	0		
+nct6798	nct6775.656	fan1		0	229	5
+nct6798	nct6775.656	fan2		0	255	5
+nct6798	nct6775.656	fan3		0	229	5
+nct6798	nct6775.656	fan4		874	229	5
+nct6798	nct6775.656	fan5		0	153	1
+nct6798	nct6775.656	fan6		3409	255	5
+nct6798	nct6775.656	fan7		0		
+nct6798	nct6775.656	temp14	AUXTIN5			
+nct6798	nct6775.656	fan8		[N/A]		

@@ -1,0 +1,23 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.DS_Store
+Thumbs.db
+
+.worktrees/
+.superpowers/
+
+.coverage
+htmlcov/
+
+# Nur lokal (Agent-/Sitzungsdateien, interne Audits und Abnahmeberichte)
+AGENTS.md
+CLAUDE.md
+docs/design-audit-*.md
+docs/design-glossar.md
+docs/update-queue-abnahme-*.md
+docs/superpowers/

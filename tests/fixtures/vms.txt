@@ -1,0 +1,4 @@
+ Id   Name         State
+-----------------------------
+ -    Test VM 1   shut off
+
