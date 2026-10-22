@@ -155,6 +155,14 @@ Compose-Projektname, `stack_key` der Ordnername.
 - CI: hassfest, HACS-Validierung und die HA-Matrix (`.github/workflows/validate.yml`); Config-Flow-Zeilen- und Zweigabdeckung 100 %.
 - Bronze-Checkliste: `custom_components/unraid_ssh/quality_scale.yaml`; das Manifest beansprucht keine Stufe.
 
+## Geprüft
+
+**22.10.2026 – 0.8.0, Release-Abnahme (`main` 200cbd7):** Integrations-Runner
+(`integrationen-alle.sh`, nur unraid-ssh) 4/4 Suites grün: `tests/` 216/216
+und `tests_ha/` 157/157 je unter HA 2026.7.0 und 2026.9.2 (CI-Matrix), 746/746
+gesamt, 0 übersprungen; `ui-regeln-pruefen.py` 0 Verstöße; `manifest.json`
+Version 0.8.0.
+
 ## Namens- und Geräteschema
 
 Der Eintragstitel ist das Präfix. VMs heißen `<Präfix> VM <Name>`, Platten `<Präfix> Festplatte <Name>` (`Disk`), Shares `<Präfix> Share <Name>`, Stacks `<Präfix> Stack <Name>`; freie Container teilen sich `<Präfix> Freie Container`. Bestehende `entity_id`/`unique_id` bleiben bei Migrationen erhalten; Geräteverweise in Automationen nach Updates prüfen, Entitätsverweise bleiben bestehen. Die Integration schreibt keine Nutzerautomationen um.
