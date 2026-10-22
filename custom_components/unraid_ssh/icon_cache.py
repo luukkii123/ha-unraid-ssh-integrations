@@ -17,13 +17,19 @@ from homeassistant.components.http import StaticPathConfig
 from homeassistant.core import HomeAssistant, callback
 
 from .const import POLL_TIMEOUT
-from .icons import IconSource, MAX_ICON_BYTES, build_icon_read_command, select_icon, validate_icon
-from .model import Snapshot
+from .icons import (
+    ICON_FETCH_HTTP_ERROR, IconSource, MAX_ICON_BYTES, build_icon_fetch_command, build_icon_read_command,
+    is_plain_http, select_icon, select_stack_icon, validate_icon,
+)
+from .model import Snapshot, stack_key
 from .ssh import SSHError, UnraidSSH
 
 _LOGGER = logging.getLogger(__name__)
 _HASH_FILE = re.compile(r'[0-9a-f]{64}\.(?:png|jpg|gif|webp|svg)')
 _HTTP_KEY = 'unraid_ssh_icon_http'
+#: Cache key of a stack's picture. Docker names never contain ':', so it cannot
+#: collide with a container's name.
+STACK_PREFIX = 'stack:'
 
 
 def _directory(hass: HomeAssistant, entry_id: str) -> Path:
@@ -106,6 +112,12 @@ class ContainerIconCache:
                 select_icon(container, snapshot.icon_sources),
                 fallback.value if fallback else None,
             )
+        for stack in snapshot.stacks:
+            fallback = select_stack_icon(stack.containers, stack.services, {})
+            self._desired[STACK_PREFIX + stack_key(stack)] = (
+                select_stack_icon(stack.containers, stack.services, snapshot.icon_sources),
+                fallback.value if fallback and fallback.kind == 'url' else None,
+            )
         for name in self._pictures.keys() | self._finished.keys() | self._inflight.keys():
             if name not in self._desired:
                 self._desired[name] = (None, None)
@@ -148,6 +160,17 @@ class ContainerIconCache:
         if value != previous:
             for listener in tuple(self._listeners):
                 listener()
+
+    async def _decode(self, text: str) -> tuple[bytes, str] | None:
+        image = None
+        if len(text) <= 4 * ((MAX_ICON_BYTES + 2) // 3):
+            try:
+                image = await self._executor(validate_icon, base64.b64decode(text, validate=True))
+            except (ValueError, binascii.Error):
+                pass
+        if image is None:
+            _LOGGER.debug('Container icon rejected by image validation')
+        return image
 
     async def _executor(self, function, *args):
         # Cancelling an asyncio task cannot stop an executor write. Wait for it
@@ -198,14 +221,15 @@ class ContainerIconCache:
                         result = await self._client.run(build_icon_read_command(source.value), timeout=POLL_TIMEOUT)
                         if result.exit_status:
                             raise SSHError('icon read failed')
-                        if len(result.stdout) <= 4 * ((MAX_ICON_BYTES + 2) // 3):
-                            try:
-                                data = base64.b64decode(result.stdout, validate=True)
-                                image = await self._executor(validate_icon, data)
-                            except (ValueError, binascii.Error):
-                                pass
-                        if image is None:
-                            _LOGGER.debug('Container icon rejected by image validation')
+                        image = await self._decode(result.stdout)
+                    elif self._local_enabled and is_plain_http(source):
+                        # Fetched by the server and served from /local: works on
+                        # an https dashboard and for hosts only the LAN reaches.
+                        result = await self._client.run(build_icon_fetch_command(source.value), timeout=POLL_TIMEOUT)
+                        if result.exit_status not in (0, ICON_FETCH_HTTP_ERROR):
+                            raise SSHError('icon fetch failed')
+                        if not result.exit_status:
+                            image = await self._decode(result.stdout)
                     if self._desired.get(name) != selected or self._closed:
                         continue
                     async with self._files_lock:

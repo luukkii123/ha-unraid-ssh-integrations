@@ -8,7 +8,7 @@ import posixpath
 import re
 from urllib.parse import urlsplit
 
-from .parse import Container
+from .parse import Container, StackServices
 
 _REVISION_RE = re.compile(r"^[0-9]+:[0-9]+$")
 
@@ -84,6 +84,56 @@ def select_icon(
     if url := _valid_icon_url(container.icon):
         return IconSource("url", url, "")
     return None
+
+
+def select_stack_icon(
+    containers: tuple[Container, ...],
+    services: StackServices | None,
+    metadata: dict[str, IconSource],
+) -> IconSource | None:
+    """A stack has no picture of its own: the first service with one, in compose order.
+
+    Per service, a running member's own picture comes first (Unraid's cache
+    file, then its live label); a service without a container -- the whole
+    stack while it is down -- still has its label from the compose files.
+    Members that the compose files do not list (a runtime override) follow.
+    """
+    if services is not None:
+        for service in services.services:
+            for container in containers:
+                if container.service == service and (source := select_icon(container, metadata)):
+                    return source
+            if url := _valid_icon_url(services.icons.get(service)):
+                return IconSource("url", url, "")
+    for container in containers:
+        if source := select_icon(container, metadata):
+            return source
+    return None
+
+
+def is_plain_http(source: IconSource | None) -> bool:
+    """A plain-http label URL: a browser on an https dashboard blocks it as
+    mixed content, and a LAN-only host may not answer the browser at all."""
+    if source is None or source.kind != "url":
+        return False
+    return urlsplit(source.value).scheme.casefold() == "http"
+
+
+#: curl's exit status for an HTTP answer >= 400: final, not worth a retry per poll.
+ICON_FETCH_HTTP_ERROR = 22
+_ICON_FETCH_SH = (
+    'curl -fsS --max-time 10 --max-filesize 1048576 --max-redirs 3 '
+    '--proto =http,https --proto-redir =http,https -- "$1" '
+    '| head -c 1048577 | base64 -w0'
+)
+
+
+def build_icon_fetch_command(url: str) -> str:
+    """The server fetches the label URL the way Unraid's Docker manager does;
+    the URL travels as one quoted argument, never as shell text."""
+    import shlex
+
+    return shlex.join(("bash", "-o", "pipefail", "-c", _ICON_FETCH_SH, "unraid_ssh_icon", url))
 
 
 MAX_ICON_BYTES = 1024 * 1024

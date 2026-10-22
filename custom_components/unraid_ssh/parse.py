@@ -497,6 +497,87 @@ def parse_stack_dirs(text: str) -> list[StackDir]:
     return out
 
 
+# --- compose files of the compose.manager folders (service order + icon labels) -----
+
+#: Upper bound per file; the collector cuts with `head -c` before encoding.
+MAX_COMPOSE_FILE_BYTES: Final = 256 * 1024
+_ICON_LABEL: Final = "net.unraid.docker.icon"
+
+
+@dataclass(frozen=True)
+class StackServices:
+    """Services of one compose.manager folder, in compose order, with icon labels.
+
+    The order is that of `docker-compose.yml`; services only the override adds
+    follow in its order. An override label wins over the main file, the way
+    compose merges them -- and the Compose Manager writes its icon field into
+    the override.
+    """
+
+    services: tuple[str, ...]
+    icons: dict[str, str] = field(default_factory=dict)
+
+
+def _compose_services(text: str) -> dict[str, Any]:
+    import yaml  # PyYAML ships with Home Assistant; parsed only here, never in the loop.
+
+    document = yaml.safe_load(text) if text.strip() else None
+    services = document.get("services") if isinstance(document, dict) else None
+    return services if isinstance(services, dict) else {}
+
+
+def _icon_label(service: Any) -> str | None:
+    labels = service.get("labels") if isinstance(service, dict) else None
+    if isinstance(labels, dict):
+        value = labels.get(_ICON_LABEL)
+        return value.strip() if isinstance(value, str) else None
+    if isinstance(labels, list):
+        for item in labels:
+            if isinstance(item, str) and item.split("=", 1)[0].strip() == _ICON_LABEL:
+                return item.split("=", 1)[1].strip() if "=" in item else None
+    return None
+
+
+def parse_stack_services(text: str) -> dict[str, StackServices]:
+    """`<folder>\t<file>\t<base64>` lines -> folder -> services and icon labels.
+
+    A file that is not valid YAML only drops that folder, never the section: one
+    hand-edited compose file must not take the pictures of every stack along.
+    """
+    import base64
+    import binascii
+
+    files: dict[str, dict[str, str]] = {}
+    for line in text.splitlines():
+        parts = line.split("\t")
+        if len(parts) != 3 or not parts[0].strip() or parts[1] not in {"docker-compose.yml", "docker-compose.override.yml"}:
+            continue
+        try:
+            raw = base64.b64decode(parts[2], validate=True)
+        except (ValueError, binascii.Error):
+            continue
+        if len(raw) > MAX_COMPOSE_FILE_BYTES:
+            continue
+        files.setdefault(parts[0].strip(), {})[parts[1]] = raw.decode("utf-8", "replace")
+    out: dict[str, StackServices] = {}
+    for folder, texts in files.items():
+        try:
+            main = _compose_services(texts.get("docker-compose.yml", ""))
+            override = _compose_services(texts.get("docker-compose.override.yml", ""))
+        except Exception:  # noqa: BLE001 -- any YAML error drops this folder only
+            continue
+        order = [str(name) for name in main] + [str(name) for name in override if name not in main]
+        icons: dict[str, str] = {}
+        for name in order:
+            icon = _icon_label(override.get(name))
+            if icon is None:
+                icon = _icon_label(main.get(name))
+            if icon:
+                icons[name] = icon
+        out[folder] = StackServices(tuple(order), icons)
+    return out
+
+
 # --- virsh list --all ------------------------------------------------------------------
 
 _VM_STATES = {

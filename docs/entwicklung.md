@@ -123,6 +123,31 @@ Der VM-Neustartbutton verwendet genau `virsh reboot` für laufende VMs,
 mit gequotetem Namen, ohne harten Fallback. Befehlsannahme bestätigt keinen
 abgeschlossenen Gastneustart.
 
+## Stackbilder und -namen (0.8.0)
+
+Ein Stack hat in Unraid kein eigenes Bild. Der Stack-Schalter bekommt deshalb
+das Bild des ersten Dienstes mit Bild in Compose-Reihenfolge
+(`docker-compose.yml`, danach nur in der Override-Datei genannte Dienste). Je
+Dienst zählt zuerst ein laufender Container (Unraid-Cachebild, dann sein
+Live-Label), sonst das Label `net.unraid.docker.icon` aus den Compose-Dateien;
+das Override-Label gewinnt wie bei `docker compose`. So hat auch ein gestoppter
+Stack ohne Container sein Bild. Gelesen werden beide Dateien je Projektordner
+(Abschnitt `stack_files`, je Datei höchstens 256 KiB, base64), ausgewertet mit
+`yaml.safe_load`; eine kaputte Datei verwirft nur ihren Ordner, ein
+fehlender Abschnitt behält die letzte Lesung und markiert keinen Fehler.
+
+Reine `http`-Labeladressen holt der Unraid-Server per `curl` (höchstens 1 MiB,
+10 s, nur `http`/`https`, Adresse als ein gequotetes Argument), geprüft wie
+Cachebilder und unter `/local/unraid_ssh/` ausgeliefert: ein `https`-Dashboard
+blockiert `http`-Bilder als gemischte Inhalte, und mancher Dienst im LAN
+antwortet nur Adressen aus dem LAN. Eine HTTP-Fehlerantwort (curl-Status 22)
+ist endgültig bis zur nächsten Adressänderung, ein Transportfehler wird beim
+nächsten Abruf wiederholt. `https`-Adressen lädt weiter der Browser.
+
+`stack_display_name` an Stack- und Containerentitäten ist der Name aus dem
+Compose Manager (`name`-Datei, sonst Ordnername); `stack_name` bleibt der
+Compose-Projektname, `stack_key` der Ordnername.
+
 ## Tests
 
 - Reine Python-Tests (`tests/`, Fixtures unter `tests/fixtures/` sind Aufzeichnungen bzw. synthetische Daten) und HA-Bibliothekstests (`tests_ha/`, echte HA-Registries und -Plattformen, SSH ersetzt). Versionsmatrix, Resolverstrategie, Dockerbefehle und Browserlauf: [tests_ha/README.md](../tests_ha/README.md).

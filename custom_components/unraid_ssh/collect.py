@@ -159,6 +159,20 @@ _STACKS_LOOP = (
     "done"
 )
 
+#: Main and override compose file of every project folder, base64 so that any
+#: byte survives the line format. Bounded per file; a missing file is skipped.
+_STACK_FILES_LOOP = (
+    f'for d in {COMPOSE_PROJECTS_DIR}/*/; do '
+    '[ -d "$d" ] || continue; '
+    'for f in docker-compose.yml docker-compose.override.yml; do '
+    '[ -f "$d$f" ] || continue; '
+    "printf '%s\\t%s\\t' \"$d\" \"$f\" || exit \"$?\"; "
+    'head -c 262144 "$d$f" | base64 -w0 || exit "$?"; '
+    "printf '\\n' || exit \"$?\"; "
+    'done; '
+    'done'
+)
+
 SECTIONS: tuple[tuple[str, str], ...] = (
     ("var", f"cat {EMHTTP_DIR}/var.ini"),
     ("disks", f"cat {EMHTTP_DIR}/disks.ini"),
@@ -177,6 +191,7 @@ SECTIONS: tuple[tuple[str, str], ...] = (
     ("icons", _ICON_METADATA_COMMAND),
     ("compose", "docker compose ls -a --format json"),
     ("stacks", _STACKS_LOOP),
+    ("stack_files", _STACK_FILES_LOOP),
     ("vms", "virsh list --all"),
 )
 

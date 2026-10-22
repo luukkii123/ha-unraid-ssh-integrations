@@ -948,6 +948,9 @@ net-bridge	running	net_bridge-net-bridge	net_bridge	net-bridge
 /boot/config/plugins/compose.manager/projects/Smarthome/	Smarthome	true
 /boot/config/plugins/compose.manager/projects/Streaming/	Streaming	true
 /boot/config/plugins/compose.manager/projects/net-bridge/		true
+@@@ stack_files
+/boot/config/plugins/compose.manager/projects/Webstack/	docker-compose.yml	c2VydmljZXM6CiAgd2ViOgogICAgaW1hZ2U6IHdlYnN0YWNrLXdlYgogIGNvcmU6CiAgICBpbWFnZTogd2Vic3RhY2stY29yZQo=
+/boot/config/plugins/compose.manager/projects/Webstack/	docker-compose.override.yml	c2VydmljZXM6CiAgd2ViOgogICAgbGFiZWxzOgogICAgICBuZXQudW5yYWlkLmRvY2tlci5pY29uOiAnaHR0cHM6Ly9leGFtcGxlLmNvbS93ZWJzdGFjay13ZWIucG5nJwogIGNvcmU6CiAgICBsYWJlbHM6CiAgICAgIG5ldC51bnJhaWQuZG9ja2VyLmljb246ICcnCg==
 @@@ vms
  Id   Name         State
 -----------------------------

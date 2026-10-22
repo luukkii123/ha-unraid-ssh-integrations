@@ -15,6 +15,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from . import actions
 from .const import CONTAINER_ACTION_TIMEOUT, STACK_ACTION_TIMEOUT, VM_ACTION_TIMEOUT
 from .coordinator import UnraidConfigEntry, UnraidCoordinator
+from .icon_cache import STACK_PREFIX
 from .entity import VmMetadataMixin, ContainerPictureMixin, UnraidEntity, can_register_container, device_for_container, stack_device, track_new, vm_device
 from .parse import Container
 from .model import (
@@ -97,6 +98,22 @@ class UnraidSwitch(UnraidEntity, SwitchEntity):
         await self._run(self.entity_description.off_cmd)
 
 
+class StackSwitch(UnraidSwitch):
+    """The stack's main entity carries the picture of its first pictured service."""
+
+    def __init__(self, coordinator: UnraidCoordinator, *args: Any) -> None:
+        self._icons = coordinator.entry.runtime_data.icons
+        super().__init__(coordinator, *args)
+
+    @property
+    def entity_picture(self) -> str | None:
+        return self._icons.picture(STACK_PREFIX + self._item_key)
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self.async_on_remove(self._icons.async_add_listener(self.async_write_ha_state))
+
+
 class VmSwitch(VmMetadataMixin, UnraidSwitch):
     _role = "control"
 
@@ -149,7 +166,7 @@ def _plan(coordinator: UnraidCoordinator, snapshot: Snapshot) -> Iterator[Planne
         # switch it on.
         key = stack_key(stack)
         make = partial(
-            UnraidSwitch, coordinator, STACK, device, f"stack_{key}", key, find_stack_by_key,
+            StackSwitch, coordinator, STACK, device, f"stack_{key}", key, find_stack_by_key,
         )
         # A stack without a compose file gets no switch (`stack_switchable`),
         # but it exists, so its key stays expected: a stack that is merely down

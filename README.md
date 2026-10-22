@@ -131,8 +131,17 @@ Hinweise:
   die Schalter der einzelnen Container bleiben.
 - **Containerbilder:** Vorrang hat das Unraid-Cachebild (wird über SSH gelesen
   und unter `/local/unraid_ssh/` ausgeliefert), danach die URL aus dem Label
-  `net.unraid.docker.icon` (lädt der Browser direkt), sonst normale HA-Icons.
-  Bei der Tile-Karte *Bild der Entität anzeigen* einschalten.
+  `net.unraid.docker.icon`, sonst normale HA-Icons. Eine `https`-Adresse lädt
+  der Browser direkt; eine reine `http`-Adresse (etwa ein Dienst im eigenen
+  Netz) holt der Unraid-Server selbst ab, damit sie auch auf einem
+  `https`-Dashboard erscheint. Bei der Tile-Karte *Bild der Entität anzeigen*
+  einschalten.
+- **Stackbilder und -namen:** Der Stack-Schalter trägt das Bild des ersten
+  Dienstes mit Bild in der Reihenfolge der Compose-Datei; Icons aus dem
+  Compose Manager (Override-Datei) zählen auch, solange der Stack gestoppt ist.
+  Das Attribut `stack_display_name` nennt den Namen, den der Compose Manager
+  zeigt (Datei `name` des Projektordners, sonst der Ordnername); `stack_name`
+  bleibt der Compose-Projektname. Die Compose-Dateien werden nur gelesen.
 - **Aufräumen:** Entitäten, die fünf Minuten lang in keiner erfolgreichen
   Abfrage mehr vorkommen, werden entfernt (nur wenn der zuständige Abschnitt
   gelesen werden konnte); leere Geräte verschwinden mit. Ein ausgeschalteter

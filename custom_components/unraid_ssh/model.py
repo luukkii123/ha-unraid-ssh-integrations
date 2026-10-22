@@ -78,6 +78,12 @@ class Stack:
     running: int
     config_files: tuple[str, ...]
     containers: tuple[Container, ...]
+    #: Name the Compose Manager shows: the folder's `name` file, else the folder
+    #: basename; "" for a stack without a folder.
+    display_name: str = ""
+    #: Compose order and icon labels from the folder's compose files, also
+    #: while the stack is down; None when they could not be read.
+    services: parse.StackServices | None = None
 
 
 def stack_key(stack: Stack) -> str:
@@ -140,6 +146,7 @@ def merge_stacks(
     stack_dirs: list[parse.StackDir],
     projects: list[parse.ComposeProject],
     containers: list[Container],
+    stack_services: dict[str, parse.StackServices] | None = None,
 ) -> tuple[tuple[Stack, ...], tuple[Container, ...]]:
     by_project: dict[str, list[Container]] = {}
     loose: list[Container] = []
@@ -173,6 +180,8 @@ def merge_stacks(
                 running=info.running if info else 0,
                 config_files=info.config_files if info else (),
                 containers=tuple(by_project.get(name, ())),
+                display_name=folder.name,
+                services=(stack_services or {}).get(folder.path),
             )
         )
     for info in projects:
@@ -229,6 +238,7 @@ class Snapshot:
     container_resources: dict[str, parse.ResourceSample] = field(default_factory=dict)
     vm_resources: dict[str, parse.VmResourceSample] = field(default_factory=dict)
     sampled_at: float | None = None
+    stack_services: dict[str, parse.StackServices] = field(default_factory=dict)
 
 
 def _section(sections: dict[str, str], name: str, fn: Callable[[str], Any], failed: set[str], default: Any) -> Any:
@@ -283,7 +293,15 @@ def build_snapshot(sections: dict[str, str], previous: Snapshot | None, *, sampl
                 and sample.cpu_time >= old.cpu_time):
             cpu = (sample.cpu_time - old.cpu_time) / (elapsed * 1e9) * 100
         resources[vm.name] = replace(sample, cpu_percent=cpu)
-    stacks, loose = merge_stacks(stack_dirs, projects, containers)
+    # Pictures only: a missing or broken section keeps the last good reading and
+    # never marks the poll as failed, so stack devices and switches are untouched.
+    stack_services = previous.stack_services if previous else {}
+    if sections.get("stack_files") is not None:
+        try:
+            stack_services = parse.parse_stack_services(sections["stack_files"])
+        except Exception:  # noqa: BLE001 -- e.g. PyYAML missing; keep the last reading
+            pass
+    stacks, loose = merge_stacks(stack_dirs, projects, containers, stack_services)
     prev_cpu = previous.cpu_times if previous else None
     return Snapshot(
         array=array,
@@ -303,7 +321,7 @@ def build_snapshot(sections: dict[str, str], previous: Snapshot | None, *, sampl
         icon_sources=icon_sources,
         icons_valid=icons_valid,
         container_resources={c.name: replace(docker_stats[c.name], ram_limit=docker_limits.get(c.name)) for c in containers if c.state == "running" and c.name in docker_stats},
-        vm_resources=resources, sampled_at=sampled_at,
+        vm_resources=resources, sampled_at=sampled_at, stack_services=stack_services,
     )
 
 
@@ -530,6 +548,7 @@ def container_metadata(snapshot: Snapshot, container: Container, entry_id: str, 
             "container_state": container.state, "image": container.image,
             "stack_key": stack_key(stack) if stack else None,
             "stack_name": container.project or None,
+            "stack_display_name": (stack.display_name or stack.name) if stack else None,
             "compose_service": container.service or None, "compose_replica": container.replica,
             "identity_status": status}
 
@@ -537,6 +556,7 @@ def container_metadata(snapshot: Snapshot, container: Container, entry_id: str, 
 def stack_metadata(stack: Stack, entry_id: str, role: str) -> dict[str, Any]:
     return {"kind": "stack", "role": role, "config_entry_id": entry_id,
             "stack_key": stack_key(stack), "stack_name": stack.name,
+            "stack_display_name": stack.display_name or stack.name,
             "running_containers": sum(c.state == "running" for c in stack.containers),
             "total_containers": len(stack.containers)}
 
