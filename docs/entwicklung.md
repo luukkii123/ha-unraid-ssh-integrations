@@ -198,3 +198,14 @@ Version 0.8.0.
 ## Namens- und Geräteschema
 
 Der Eintragstitel ist das Präfix. VMs heißen `<Präfix> VM <Name>`, Platten `<Präfix> Festplatte <Name>` (`Disk`), Shares `<Präfix> Share <Name>`, Stacks `<Präfix> Stack <Name>`; freie Container teilen sich `<Präfix> Freie Container`. Bestehende `entity_id`/`unique_id` bleiben bei Migrationen erhalten; Geräteverweise in Automationen nach Updates prüfen, Entitätsverweise bleiben bestehen. Die Integration schreibt keine Nutzerautomationen um.
+
+**26.10.2026 – 0.8.1, Kapazitätssensoren (#580):** Veröffentlichung der
+reviewten Änderung aus PR #1. Beide HA-Versionen bestehen je 234 reine und
+175 HA-Tests (818 insgesamt), keine Skips; Abhängigkeitsprüfung und statische
+UI-Prüfung grün. Frische GitHub-CI des PRs vollständig grün. Die parallel
+ausgeführte Integrations-Gesamtmatrix bestand 1011/1011 Tests. Unveränderte
+Config-/Optionsformulare; neue Kapazitäten sind native DATA_SIZE-Entitäten
+und werden von der Array-Karte verarbeitet. Deren abschließende
+Chromium-Prüfung bei 320/480/960 px, hell/dunkel bestand einschließlich
+Kapazitätstiteln und Poolmitgliedern ohne eigenes Dateisystem. Vor dem Tag
+wurde ausschließlich die Manifestversion auf 0.8.1 angehoben.
