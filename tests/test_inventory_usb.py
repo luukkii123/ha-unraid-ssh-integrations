@@ -118,6 +118,49 @@ exit 9
     assert 'PRIVATE' not in output and '<domain>' not in output
 
 
+def test_mapping_php_keeps_paused_active_vm_and_excludes_stopped_vm(tmp_path):
+    import os
+    import subprocess
+    import shlex
+    fake=tmp_path/'virsh'
+    # Model libvirt's active default and the state/all/inactive filters.
+    fake.write_text('''#!/bin/sh
+if [ "$1" = list ]; then
+    case " $* " in
+        *" --inactive "*) printf '%s\\n' 'Stopped VM';;
+        *" --all "*) printf '%s\\n' 'Running VM' 'Paused VM' 'Stopped VM';;
+        *" --state-running "*) printf '%s\\n' 'Running VM';;
+        *) printf '%s\\n' 'Running VM' 'Paused VM';;
+    esac
+    exit 0
+fi
+if [ "$1" = dumpxml ] && [ "$2" = --domain ] && [ "$#" = 3 ]; then
+    case "$3" in
+        'Running VM') dev=4;;
+        'Paused VM') dev=5;;
+        'Stopped VM') dev=6;;
+        *) exit 9;;
+    esac
+    printf '<domain><devices><hostdev type="usb"><source><address bus="1" device="%s"/></source></hostdev></devices></domain>' "$dev"
+    exit 0
+fi
+exit 9
+''')
+    fake.chmod(0o755)
+    env=dict(os.environ,PATH=str(tmp_path)+':'+os.environ['PATH'])
+    command=dict(inventory_sections())['inv_usb_mapping']
+    output=subprocess.check_output(shlex.split(command),text=True,env=env,cwd=tmp_path)
+    assert json.loads(output)['active']==[
+        dict(vm='Running VM',bus='1',dev='4'),
+        dict(vm='Paused VM',bus='1',dev='5'),
+    ]
+    result=parse([device(),device('1-3','1','5'),device('1-4','1','6')],json.loads(output))
+    assert [(row.state,row.assigned_vm) for row in result.usb]==[
+        ('vm','Running VM'),('vm','Paused VM'),('host',None),
+    ]
+    assert 'inv_usb_mapping' not in result.failed
+
+
 @pytest.mark.parametrize('bad',[{'vm':'VM','vendor':None,'product':'abcd'},{'vm':None,'bus':'1','dev':'4'},{'vm':'VM','bus':{},'dev':'4'}])
 def test_invalid_optional_mapping_is_partial_but_usb_survives(bad):
     result=parse([device()],mapping(bad))

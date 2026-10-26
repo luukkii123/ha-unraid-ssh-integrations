@@ -79,13 +79,13 @@ foreach ($paths as $path) {
 echo json_encode($out,JSON_THROW_ON_ERROR);
 '''
 _MAPPING = r'''
-// Only active domains are enumerated. The XML never crosses SSH.
+// Active domains include paused VMs; inactive definitions are excluded. The XML never crosses SSH.
 function run_bounded($command) {
     $h=popen($command,"r"); if ($h===false) return false;
     $text=stream_get_contents($h,65537); $status=pclose($h);
     return $status!==0 || $text===false || strlen($text)>65536 ? false : $text;
 }
-$text=run_bounded("timeout --foreground 0.4 virsh list --state-running --name");
+$text=run_bounded("timeout --foreground 0.4 virsh list --name");
 if ($text===false) exit(1); $names=explode("\n",trim($text));
 $active=[];
 foreach ($names as $name) {
