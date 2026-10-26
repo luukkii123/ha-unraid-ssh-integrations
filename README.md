@@ -88,7 +88,7 @@ ohne Compose-Projekt. Namen folgen dem Muster `<Präfix> <Gerät> …`.
 
 | Gruppe | Inhalt |
 | --- | --- |
-| Server | CPU-Auslastung, Speicherauslastung, Systemlast (1 min), letzter Start, Array-Status, Array gestartet, Paritätsprüfung (läuft, Fortschritt, Fehler), Mover aktiv |
+| Server | CPU-Auslastung, Speicherauslastung, Systemlast (1 min), letzter Start, Array-Status, Paritätsprüfung (einschließlich Pause), Mover; zusätzliche Dashboarddaten und Serverknöpfe |
 | Temperaturen | je Kanal aus `/sys/class/hwmon` ein Sensor, dazu die festen Sensoren **CPU-Temperatur** und **Mainboard-Temperatur** |
 | Lüfter | je Lüfter Drehzahl (RPM) und PWM-Ansteuerung (%); GPU-Lüfter in Prozent. Nur Anzeige — die Integration schreibt nie nach `pwm` |
 | GPU (NVIDIA, über `nvidia-smi`) | Auslastung, VRAM, Temperatur, Leistungsaufnahme, Lüfter |
@@ -152,11 +152,54 @@ Hinweise:
   Stack behält seine Entitäten. Einmal-Container (`docker run` ohne Compose und
   ohne Unraid-Verwaltung) bekommen keine Entität.
 
+## Zusätzliche Dashboarddaten
+
+Ab Version 0.9 stehen weitere Daten für Automationen und Unraid Cards bereit:
+CPU-Kerne und belegbare CPU-Package-Leistung, RAM-Aufteilung, Mainboard/BIOS,
+Servermodell und Lizenztyp, Boot-/Log-/Docker-Image-Belegung, Netzwerk-Interfaces,
+SMART-Cache und Poolzustand, Share-Sicherheit und offene Pfade sowie
+VM-Host-CPU und Netzwerk-/Datenträgerdurchsatz. NVIDIA-Modell und Treiber
+werden ergänzt, soweit die vorhandene Abfrage sie liefert.
+
+Einzelwerte wie Leistung, Durchsatz und Auslastung sind normale Sensoren.
+Die sieben Dashboard-Sammelsensoren enthalten strukturierte Listen in ihren
+Attributen. Diese Listen und wechselnden Metadaten bleiben aus dem Recorder
+ausgenommen; aktuelle Werte sind weiterhin über Home Assistant lesbar.
+Numerische Messwerte behalten ihre Historie. Die bisherigen IDs bleiben erhalten.
+
+Die Integration erkennt optionale Datenquellen einzeln. Fehlende Treiber,
+Dateien oder Programme ergeben unbekannte bzw. teilweise verfügbare Daten;
+sie führen nicht zum Laden von Treibern oder Ausführen von Plugin-Hooks.
+SMART stammt ausschließlich aus vorhandenem Cache und weckt keine Platten.
+CPU-Leistung ohne belastbare Quelle oder eindeutiges Zählerdelta wird nicht
+geschätzt. Netzwerkraten verschiedener Interfaces werden nicht summiert.
+
+Docker kann eine Image-Datei oder ein Verzeichnis verwenden. Eine eigene
+vdisk-Belegung erscheint nur bei belegtem Image-Mount; die Kapazität eines
+Pools wird nicht als exklusiver Docker-Verbrauch ausgegeben. Share-Streams
+zählen offene eindeutige Pfade wie im Unraid-Dashboard, keine SMB-Sitzungen.
+Der bestehende VM-CPU-Sensor zählt weiterhin 100 % je belegtem Hostkern;
+der zusätzliche Hostanteil hat einen eigenen eindeutigen Namen.
+
 ## Aktionen
 
 Die Integration registriert keine eigenen Aktionen (Services). Gesteuert wird
 über Schalter, Knöpfe und Update-Entitäten (`switch.turn_on/off`,
 `button.press`, `update.install`).
+
+Zusätzliche Serverknöpfe: Neustart, Ausschalten, Array starten/stoppen,
+Parität prüfen, pausieren, fortsetzen oder abbrechen, alle Platten schlafen
+legen und Mover starten. **Paritätsstart prüft ausschließlich ohne Korrektur.**
+Unbekannte oder unzulässige Array-/Sync-Zustände werden abgewiesen. Arraystart
+verlangt eine vollständige, frisch belegte Poolinventur; bei unklaren Pools
+muss der Start in Unraids WebGui geprüft werden. Eine Laufzeitsperre verhindert
+gleichzeitige Serverbefehle und konkurrierende Container-Updatejobs.
+Ein Timeout oder Verbindungsabbruch wird nicht automatisch wiederholt und ist
+kein Beleg für einen erfolgreichen Neustart oder Shutdown.
+
+Die Karten verlangen vor Serveraktionen eine Bestätigung. Direkte HA-Knöpfe
+und Automationen besitzen diese Kartenbestätigung nicht; deren Ausführung
+unterliegt weiterhin den Backendprüfungen.
 
 ## Sicherheitshinweise
 
@@ -166,8 +209,9 @@ Die Integration registriert keine eigenen Aktionen (Services). Gesteuert wird
 - Der Hostschlüssel wird beim ersten Verbinden gemerkt und danach erzwungen; bei
   einer Abweichung wird die Verbindung verweigert, bis du ihn bewusst
   akzeptierst.
-- Schreibende Aktionen sind auf Start/Stopp/Neustart von Containern, Stacks und
-  VMs, harte VM-Abschaltung und Container-Updates begrenzt.
+- Schreibende Aktionen sind auf die beschriebenen Container-/Stack-/VM- und
+  Serverknöpfe sowie Container-Updates begrenzt; es gibt keine frei
+  konfigurierbaren Shellbefehle.
 
 ## Entfernen
 
