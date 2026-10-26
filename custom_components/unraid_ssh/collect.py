@@ -10,6 +10,8 @@ from __future__ import annotations
 import re
 import shlex
 
+from .collect_telemetry import dashboard_sections
+
 from .const import (
     COMPOSE_PROJECTS_DIR,
     EMHTTP_DIR,
@@ -187,7 +189,7 @@ SECTIONS: tuple[tuple[str, str], ...] = (
     ("docker_limits", "timeout 3 bash -o pipefail -c " + shlex.quote(
         "ids=$(docker ps -q) || exit; [ -n \"$ids\" ] || exit 0; "
         "docker inspect --format '{{.Name}}{{\"\\t\"}}{{.HostConfig.Memory}}' $ids")),
-    ("vm_stats", "LC_ALL=C timeout 5 virsh domstats --cpu-total --balloon --vcpu"),
+    ("vm_stats", "LC_ALL=C timeout 5 virsh domstats --cpu-total --balloon --vcpu --interface --block"),
     ("icons", _ICON_METADATA_COMMAND),
     ("compose", "docker compose ls -a --format json"),
     ("stacks", _STACKS_LOOP),
@@ -213,8 +215,24 @@ def _build_sections(sections: tuple[tuple[str, str], ...]) -> str:
     return "; ".join(parts)
 
 
-def build_state_command() -> str:
-    return _build_sections(SECTIONS)
+def build_state_command(*, include_inventory: bool = False, include_streams: bool = False) -> str:
+    # Each group shares a monotone remote deadline. Every section still emits
+    # its status and the end marker when the deadline has expired.
+    sections = list(SECTIONS)
+    dashboard = dashboard_sections(include_inventory=include_inventory, include_streams=include_streams)
+    fast = sections
+    slow = []
+    for name, command in dashboard:
+        target = slow if name in {"dash_hardware", "dash_smart", "dash_pools", "dash_shares", "dash_gpu", "dash_streams"} else fast
+        target.append((name, command))
+    def bounded(group):
+        wrapped = []
+        for name, command in group:
+            wrapped.append((name, 'remaining=$((dashboard_deadline-$(date +%s)));  [ "$remaining" -gt 0 ] || exit 124; '
+                            'timeout "$remaining" bash -o pipefail -c ' + shlex.quote(command)))
+        # SECONDS must be initialized in the same shell running each timeout.
+        return _build_sections(tuple(wrapped)).rsplit("; ", 1)[0]
+    return "export dashboard_deadline=$(($(date +%s)+8)); " + bounded(fast) + "; export dashboard_deadline=$(($(date +%s)+8)); " + bounded(slow) + "; echo '@@@ end'"
 
 #: A marker is `@@@ <name>` running to the end of its line. It is deliberately
 #: NOT required to start one: `echo '@@@ next'` writes straight after whatever
