@@ -11,6 +11,7 @@ import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 import logging
+from time import monotonic
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -40,6 +41,7 @@ from .const import (
     POLL_TIMEOUT,
     UPDATE_TIMEOUT,
 )
+from .telemetry import FAST, INVENTORY
 from .model import ImageStatus, Snapshot, build_snapshot, build_update_state, refs_to_check
 from .parse import parse_image_digests, parse_inventory, parse_remote_digests
 from .ssh import SSHAuthError, SSHError, SSHHostKeyError, UnraidSSH
@@ -97,10 +99,22 @@ class UnraidCoordinator(DataUpdateCoordinator[Snapshot]):
         self.client = client
         self.host: str = entry.data[CONF_HOST]
         self._reported_failed: set[str] = set()
+        self._inventory_due = 0.0
+        self._streams_due = 0.0
 
     async def _async_update_data(self) -> Snapshot:
+        now = monotonic()
+        include_inventory = now >= self._inventory_due
+        include_streams = now >= self._streams_due
+        # Deadlines advance for attempted groups, including errors. Optional
+        # probes must never fall into a retry loop on the normal poll cadence.
+        if include_inventory:
+            self._inventory_due = now + 300
+        if include_streams:
+            self._streams_due = now + 60
         try:
-            result = await self.client.run(build_state_command(), timeout=POLL_TIMEOUT)
+            result = await self.client.run(build_state_command(
+                include_inventory=include_inventory, include_streams=include_streams), timeout=POLL_TIMEOUT)
         except (SSHAuthError, SSHHostKeyError) as err:
             raise ConfigEntryAuthFailed(str(err)) from err
         except SSHError as err:
@@ -109,7 +123,9 @@ class UnraidCoordinator(DataUpdateCoordinator[Snapshot]):
             sections = split_output(result.stdout)
         except TruncatedOutput as err:
             raise UpdateFailed(f"output truncated ({len(result.stdout)} bytes)") from err
-        snapshot = build_snapshot(sections, self.data)
+        requested = (*FAST, *(INVENTORY if include_inventory else ()), *(('dash_streams',) if include_streams else ()))
+        sections['dash_requested'] = '\n'.join(requested)
+        snapshot = build_snapshot(sections, self.data, sampled_at=monotonic())
         new_failures = snapshot.failed - self._reported_failed
         if new_failures:
             _LOGGER.warning("unraid_ssh: sections unparsable on %s: %s", self.host, ", ".join(sorted(new_failures)))

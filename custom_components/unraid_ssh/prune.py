@@ -34,6 +34,8 @@ _LOGGER = logging.getLogger(__name__)
 #: judged at all. A failed section means the server told us nothing about that
 #: kind of thing this poll -- not that the thing is gone.
 _ENTITY_SECTIONS: tuple[tuple[tuple[str, ...], frozenset[str]], ...] = (
+    (("net_rx_", "net_tx_"), frozenset({"dash_interfaces"})),
+    (("disk_smart_",), frozenset({"disks", "dash_smart"})),
     (("container_", "update_", "restart_container_"), frozenset({"docker"})),
     # A stack can come from a compose.manager folder, from `docker compose ls`
     # or from a container's project label alone, so all three have to be
@@ -152,6 +154,7 @@ def async_prune_stale(hass: HomeAssistant, entry: UnraidConfigEntry) -> None:
         return
     prefix = entry.entry_id + "_"
     expected = {prefix + key for key in expected_keys(entry, snapshot)}
+    failures = snapshot.failed | snapshot.telemetry.failed
     registry = er.async_get(hass)
     now = dt_util.utcnow()
     clocks: dict[str, datetime] = {}
@@ -167,9 +170,9 @@ def async_prune_stale(hass: HomeAssistant, entry: UnraidConfigEntry) -> None:
         sections = _sections(_ENTITY_SECTIONS, suffix)
         if sections is None:
             continue
-        if not sections & snapshot.failed and _container_still_owned(suffix, snapshot):
+        if not sections & failures and _container_still_owned(suffix, snapshot):
             continue                       # a stack that is down, not an orphan
-        if sections & snapshot.failed:
+        if sections & failures:
             # Not judged this poll. The clock is neither started nor reset --
             # a server that cannot answer must not buy an entity more time,
             # and must not cost it any either.

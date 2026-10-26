@@ -17,6 +17,7 @@ import time
 from typing import Any, Callable
 
 from . import parse
+from .telemetry import DashboardTelemetry, parse_dashboard_sections
 from .icons import IconSource, parse_icon_metadata
 from .parse import (
     ArrayInfo,
@@ -239,6 +240,7 @@ class Snapshot:
     vm_resources: dict[str, parse.VmResourceSample] = field(default_factory=dict)
     sampled_at: float | None = None
     stack_services: dict[str, parse.StackServices] = field(default_factory=dict)
+    telemetry: DashboardTelemetry = field(default_factory=DashboardTelemetry)
 
 
 def _section(sections: dict[str, str], name: str, fn: Callable[[str], Any], failed: set[str], default: Any) -> Any:
@@ -322,6 +324,7 @@ def build_snapshot(sections: dict[str, str], previous: Snapshot | None, *, sampl
         icons_valid=icons_valid,
         container_resources={c.name: replace(docker_stats[c.name], ram_limit=docker_limits.get(c.name)) for c in containers if c.state == "running" and c.name in docker_stats},
         vm_resources=resources, sampled_at=sampled_at, stack_services=stack_services,
+        telemetry=parse_dashboard_sections(sections, previous.telemetry if previous else None, sampled_at=sampled_at),
     )
 
 

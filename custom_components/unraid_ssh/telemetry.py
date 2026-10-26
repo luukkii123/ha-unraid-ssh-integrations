@@ -27,6 +27,8 @@ class DashboardTelemetry:
     sample_times: dict[str, float] = field(default_factory=dict)
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
     registration: str | None = None
+    known_ids: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    docker_mode: str = "unknown"
 
 
 def interface_key(name: str) -> str:
@@ -221,5 +223,10 @@ def parse_dashboard_sections(sections: dict[str,str], previous: DashboardTelemet
                 disk_read_bytes_s=_device_rate(row,old,'block','rd.bytes',elapsed),disk_write_bytes_s=_device_rate(row,old,'block','wr.bytes',elapsed)))
         values['vms']=tuple(result); raw['vm_stats']=vmrows; raw['vms']=instances; times['vm_stats']=sampled_at; failed.discard('vm_stats')
     except (KeyError,ValueError,TypeError): values['vms']=None; failed.add('vm_stats')
+    known_ids=dict(previous.known_ids)
+    for source, field_name, key in (("dash_interfaces","interfaces","id"),("dash_smart","smart","name")):
+        rows=values[field_name]
+        if rows is not None:
+            known_ids[source]=tuple(row[key] for row in rows)
     registration=parse.parse_flat_ini(sections.get('var','')).get('regTy')
-    return DashboardTelemetry(**values,registration=registration,failed=frozenset(failed),sample_times=times,raw=raw)
+    return DashboardTelemetry(**values,registration=registration,failed=frozenset(failed),sample_times=times,raw=raw,known_ids=known_ids)
