@@ -175,6 +175,8 @@ _STACK_FILES_LOOP = (
     'done'
 )
 
+# Inner timeouts stay in the worker's group; only its outer timeout creates a
+# group and supplies the forced-kill grace for every nested command.
 SECTIONS: tuple[tuple[str, str], ...] = (
     ("var", f"cat {EMHTTP_DIR}/var.ini"),
     ("disks", f"cat {EMHTTP_DIR}/disks.ini"),
@@ -185,11 +187,11 @@ SECTIONS: tuple[tuple[str, str], ...] = (
     ("gpu", f"nvidia-smi --query-gpu={_GPU_QUERY} --format=csv,noheader,nounits"),
     ("sensors", _SENSORS_LOOP),
     ("docker", f"docker ps -a --format '{_DOCKER_FORMAT}'"),
-    ("docker_stats", "LC_ALL=C timeout 8 docker stats --no-stream --format '{{json .}}'"),
-    ("docker_limits", "timeout 3 bash -o pipefail -c " + shlex.quote(
+    ("docker_stats", "LC_ALL=C timeout --foreground 8 docker stats --no-stream --format '{{json .}}'"),
+    ("docker_limits", "timeout --foreground 3 bash -o pipefail -c " + shlex.quote(
         "ids=$(docker ps -q) || exit; [ -n \"$ids\" ] || exit 0; "
         "docker inspect --format '{{.Name}}{{\"\\t\"}}{{.HostConfig.Memory}}' $ids")),
-    ("vm_stats", "LC_ALL=C timeout 5 virsh domstats --cpu-total --balloon --vcpu --interface --block"),
+    ("vm_stats", "LC_ALL=C timeout --foreground 5 virsh domstats --cpu-total --balloon --vcpu --interface --block"),
     ("icons", _ICON_METADATA_COMMAND),
     ("compose", "docker compose ls -a --format json"),
     ("stacks", _STACKS_LOOP),
@@ -273,7 +275,9 @@ dashboard_launch() {
     fi
     [ "$remaining" -le "$cap" ] || remaining=$cap
     printf -v duration '%d.%02d' "$((remaining/100))" "$((remaining%100))"
-    timeout --kill-after=0.2 "$duration" bash -o pipefail -c "$command" > "$dashboard_tmp/$name" 2>/dev/null &
+    # Keep the monitored shell alive after TERM until timeout kills its group.
+    # Otherwise PHP can exit first and disarm the timer while its children live.
+    timeout --kill-after=0.2 "$duration" bash -o pipefail -c "trap 'trap \"\" TERM; while :; do sleep 1; done' TERM; $command" > "$dashboard_tmp/$name" 2>/dev/null &
     dashboard_pids[index]=$!
 }
 dashboard_emit() {

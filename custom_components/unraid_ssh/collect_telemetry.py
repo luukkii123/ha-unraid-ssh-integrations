@@ -59,7 +59,8 @@ foreach ($disks as $key=>$disk) {
 echo json_encode((object)$out);
 ''')
 # Only bounded, read-only filesystem tools. Membership comes from explicit pool
-# metadata and filesystem output, never from a numeric name suffix.
+# metadata and filesystem output, never from a numeric name suffix. Inner
+# timeouts use --foreground to retain the outer worker's TERM/KILL group.
 _POOLS = _php(r'''
 $disks = @parse_ini_file("/var/local/emhttp/disks.ini",true,INI_SCANNER_RAW);
 if ($disks === false) exit(1);
@@ -90,22 +91,22 @@ foreach ($carriers as $mount=>$disk) {
     $expected=ctype_digit($metadata) ? (int)$metadata : null;
     if ($expected === null) foreach (preg_split('/[ ,]+/',$metadata,-1,PREG_SPLIT_NO_EMPTY) as $member) { $public=public_member($member,$deviceNames); if ($public !== null) $members[]=$public; }
     if ($state !== "unmounted" && $fs === "btrfs") {
-        exec("timeout 1 btrfs filesystem show ".escapeshellarg($mount),$show,$rc);
+        exec("timeout --foreground 1 btrfs filesystem show ".escapeshellarg($mount),$show,$rc);
         if ($rc === 0) {
             $state="online";
             foreach ($show as $line) {
                 if (preg_match('/path\s+(\S+)/',$line,$m)) { $public=public_member($m[1],$deviceNames); if ($public !== null) $members[]=$public; else $state="unknown"; }
                 if (stripos($line,"missing") !== false) $state="degraded";
             }
-            exec("timeout 1 btrfs device stats ".escapeshellarg($mount),$stats,$statsrc);
+            exec("timeout --foreground 1 btrfs device stats ".escapeshellarg($mount),$stats,$statsrc);
             if ($statsrc !== 0) $state="unknown";
             elseif ($state === "online") foreach ($stats as $line) if (preg_match('/\s([1-9][0-9]*)$/',$line)) $state="warning";
             unset($stats);
         }
         unset($show);
     } elseif ($state !== "unmounted" && $fs === "zfs") {
-        exec("timeout 1 zpool list -H -p -o name,health ".escapeshellarg($name),$health,$rc);
-        exec("timeout 1 zpool status -P ".escapeshellarg($name),$show,$statusrc);
+        exec("timeout --foreground 1 zpool list -H -p -o name,health ".escapeshellarg($name),$health,$rc);
+        exec("timeout --foreground 1 zpool status -P ".escapeshellarg($name),$show,$statusrc);
         if ($rc === 0 && $statusrc === 0 && isset($health[0])) {
             $cols=preg_split('/\s+/',trim($health[0]));
             $state=["ONLINE"=>"online","DEGRADED"=>"degraded","FAULTED"=>"faulted"][$cols[1] ?? ""] ?? "unknown";
@@ -158,7 +159,7 @@ if ($shares === false || $disks === false) exit(1);
 $mounts=[];
 foreach ($disks as $disk) if (($disk["fsStatus"] ?? "") === "Mounted" && !empty($disk["fsMountpoint"]) && in_array($disk["type"] ?? "",["Data","Cache"],true)) $mounts[]=$disk["fsMountpoint"];
 if (!$mounts) { echo "{}"; exit(0); }
-$command="timeout 3 lsof -Fn";
+$command="timeout --foreground 3 lsof -Fn";
 foreach (array_unique($mounts) as $mount) $command.=" ".escapeshellarg($mount);
 exec($command,$lines,$rc);
 if ($rc !== 0) exit(1);

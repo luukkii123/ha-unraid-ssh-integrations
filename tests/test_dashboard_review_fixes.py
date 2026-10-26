@@ -90,7 +90,8 @@ def test_optional_gpu_timeout_preserves_following_inventory_and_normal_stats(mon
     assert sections['dash_cpu'] == 'cpu-ok'
     assert sections['docker_stats'] == 'stats-ok'
     assert 'gpu' not in sections
-    assert 'gpu status=124' in result.stdout
+    # The worker stays alive until its group is killed, including descendants.
+    assert 'gpu status=137' in result.stdout
     assert result.stdout.count('@@@ end') == 1
     assert time.monotonic()-started < 8.5
 
