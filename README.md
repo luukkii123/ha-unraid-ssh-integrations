@@ -82,6 +82,37 @@ Am Eintrag **Konfigurieren**:
 
 ## Entitäten
 
+### Benutzer-, USB- und Coral-Inventar
+
+Ab Version 0.10 liefern drei zusätzliche Dashboardsensoren die Anzahl und die
+aktuellen Listen für Benutzer, USB-Geräte und Coral TPUs. Die passenden
+Unraid Cards ab 0.3 zeigen diese Daten als eigene Kacheln. Erfolgreich leere
+Quellen ergeben 0; fehlgeschlagene Quellen bleiben nicht verfügbar.
+
+- **Benutzer:** Schreiben/Lesen zählt SMB-Shares mit der jeweiligen Berechtigung,
+  keine Übertragungsmenge und keine aktiven Sitzungen. root, ausgeschaltetes
+  SMB oder unvollständige Rechtequellen haben unbekannte Zähler. Kennwortstatus
+  ist ausschließlich ein Ja/Nein-Hinweis; Passwortwerte werden nicht gelesen.
+- **USB:** Host-Sysfs liefert das sichtbare Inventar. „Am Host erkannt“ bedeutet
+  keine freie Verfügbarkeit. Aktive VM-Zuordnungen benötigen einen eindeutigen
+  libvirt-Beleg. USB Manager ist optional; unvollständiges Mapping wird
+  gekennzeichnet. Ein nur gebundenes USB/IP-Gerät gilt nicht als verbunden.
+  Ein Remoteziel ohne sicheren Gerätebezug bleibt unbekannt. Geräte hinter
+  vollständig an VMs durchgereichten USB-Controllern sind am Host unsichtbar.
+- **Coral:** PCI-Status und Temperatur stammen aus vorhandenen Kernelattributen;
+  einzelne PCI-Temperaturen bleiben normale HA-Messsensoren. USB-Coral wird
+  ausschließlich als erkannt angezeigt, ohne angenommene Betriebsbereitschaft
+  oder Temperatur. Die Integration öffnet keine TPU-Geräteknoten und führt
+  keine Inferenz oder Treiberinstallation aus.
+
+Diese Inventaransichten sind lesend. Benutzernamen, Beschreibungen und belegte
+VM-Zuordnungen sind im HA-State sichtbar. Listen und wechselnde Inventarmetadaten
+werden nicht im Recorder gespeichert; PCI-Coral-Temperaturmesswerte behalten
+ihre Historie. Benutzerrechte werden alle fünf Minuten, VM-USB-Zuordnungen
+höchstens einmal pro Minute aktualisiert; USB- und Coralstatus folgen dem
+Abfrageintervall.
+
+
 Die Entitäten verteilen sich auf Geräte: Server, je Compose-Stack, je Platte,
 je Share, je VM, je GPU sowie ein Sammelgerät „Freie Container" für Container
 ohne Compose-Projekt. Namen folgen dem Muster `<Präfix> <Gerät> …`.
