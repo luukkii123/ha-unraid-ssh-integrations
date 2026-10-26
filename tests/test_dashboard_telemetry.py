@@ -152,3 +152,12 @@ def test_smart_details_reject_unrecognized_attribute_labels():
     data=telemetry.parse_dashboard_sections(sample(dash_smart=json.dumps({'disk1':{'text':'PASSED\n197 SECRET_SERIAL_123 0x0032 100 100 000 Old_age Always - 2','mtime':123,'stale':False}})),None,sampled_at=1)
     assert data.smart[0]['details']==[]
     assert 'SECRET' not in str(data.smart)
+
+
+@pytest.mark.parametrize('payload',['[]','null','"unexpected"','{"Example":-1}','{"Example":"private-path"}'])
+def test_malformed_streams_are_isolated_and_never_break_the_main_snapshot(payload):
+    from unraid_ssh.model import build_snapshot
+    data=build_snapshot(sample(dash_streams=payload,mem='MemTotal: 1000 kB\nMemAvailable: 500 kB'),None,sampled_at=1)
+    assert data.telemetry.shares[0]['streams'] is None
+    assert 'dash_streams' in data.telemetry.failed
+    assert data.memory is not None

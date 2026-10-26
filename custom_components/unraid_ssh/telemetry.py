@@ -222,7 +222,10 @@ def parse_dashboard_sections(sections: dict[str,str], previous: DashboardTelemet
     if 'dash_streams' in sections or 'dash_streams' in requested:
         times['dash_streams']=sampled_at
         try:
-            counts=json.loads(sections['dash_streams']); raw['dash_streams']=counts; failed.discard('dash_streams')
+            counts=json.loads(sections['dash_streams'])
+            if not isinstance(counts,dict) or any(not isinstance(key,str) or type(value) is not int or value<0 for key,value in counts.items()):
+                raise ValueError('invalid stream counts')
+            raw['dash_streams']=counts; failed.discard('dash_streams')
         except (KeyError,ValueError,TypeError): counts={}; failed.add('dash_streams')
     else: counts=previous.raw.get('dash_streams',{})
     if values['shares'] is not None: values['shares']=tuple({**row,'streams':counts.get(row['name'])} for row in values['shares'])
