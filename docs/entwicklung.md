@@ -98,6 +98,29 @@ Verbindungsdaten werden in HA-Fehlerattribute übernommen.
 
 ## Ressourcenvertrag
 
+### Laufwerke und Pools
+
+Die Sensoren `disk_total_<name>`, `disk_used_<name>` und `disk_free_<name>`
+verwenden HAs `DATA_SIZE`/`MEASUREMENT` mit nativer Einheit KiB auf dem
+bisherigen Laufwerksgerät. Gesamt und frei stammen aus `fsSize`/`fsFree`
+in Unraids Laufwerksinventar; belegt ist ausschließlich deren Differenz.
+Gerundete Prozentwerte und das getrennt gemeldete `fsUsed` sind keine Quelle.
+
+Fehlende, leere, negative und nicht ganzzahlige Werte bleiben `None`.
+Freier Speicher oberhalb der Gesamtgröße ist ebenfalls ungültig; eine
+gültige Gesamtgröße bleibt dabei nutzbar. Freier Speicher von 0 KiB ist ein
+gültiges volles Dateisystem. Gesamtgröße 0 bzw. fehlende Gesamtgröße liefert
+keine Dateisystemkapazität und erzeugt keine neuen Kapazitätsentitäten.
+Poolmitglieder ohne eigenes Dateisystem zählen daher keine Kapazität doppelt.
+
+Bei Dateisystemverlust bleiben bereits angelegte Entitäten unbekannt und
+ihre Schlüssel erwartet, solange das Laufwerk existiert. Ein fehlendes
+Laufwerk wird unverfügbar und erst nach dem normalen Pruning-Zeitfenster
+entfernt; ein fehlgeschlagener Inventarabruf ist kein Nachweis der Entfernung.
+Die bisherigen Entitätskennungen ändern sich nicht.
+
+### Container und VMs
+
 Container liefern CPU in Prozent (100 % je ausgelastetem Kern) und RAM in
 Bytes. `ram_limit` stammt ausschließlich aus dem gezielt gelesenen
 `HostConfig.Memory`: kein konfiguriertes Limit oder eine fehlgeschlagene
@@ -156,6 +179,15 @@ Compose-Projektname, `stack_key` der Ordnername.
 - Bronze-Checkliste: `custom_components/unraid_ssh/quality_scale.yaml`; das Manifest beansprucht keine Stufe.
 
 ## Geprüft
+
+**26.10.2026 – Kapazitätssensoren (#580, lokal, Version unverändert 0.8.0):**
+Jeweils 234/234 reine Python-/PHP-Tests und 175/175 HA-Bibliothekstests unter
+HA 2026.7.0 und 2026.9.2, insgesamt 818/818 ohne übersprungene Tests.
+Beide Testumgebungen melden `pip check` ohne Konflikte; die UI-Regelprüfung
+meldet 0 Verstöße. Die neuen Fälle prüfen gemischte Laufwerksgrößen,
+Poolbesitzer/-mitglieder, fehlende und ungültige Dateisystemzahlen, echte
+0 KiB frei, Dateisystemrückkehr, IDs, Übersetzungen und Grace-Pruning.
+Keine Browser-/Live-Abnahme und keine Veröffentlichung in diesem Teilschritt.
 
 **22.10.2026 – 0.8.0, Release-Abnahme (`main` 200cbd7):** Integrations-Runner
 (`integrationen-alle.sh`, nur unraid-ssh) 4/4 Suites grün: `tests/` 216/216
