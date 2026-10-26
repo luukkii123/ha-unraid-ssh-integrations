@@ -129,6 +129,19 @@ DISK: tuple[UnraidSensorDescription, ...] = (
     UnraidSensorDescription(key="disk_usage", native_unit_of_measurement=PERCENTAGE,
                             state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=0,
                             value_fn=lambda d: d.usage_percent),
+    UnraidSensorDescription(key="disk_total", device_class=SensorDeviceClass.DATA_SIZE,
+                            native_unit_of_measurement=UnitOfInformation.KIBIBYTES,
+                            state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=0,
+                            value_fn=lambda d: d.fs_size_kib if d.fs_size_kib else None),
+    UnraidSensorDescription(key="disk_used", device_class=SensorDeviceClass.DATA_SIZE,
+                            native_unit_of_measurement=UnitOfInformation.KIBIBYTES,
+                            state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=0,
+                            value_fn=lambda d: d.fs_size_kib - d.fs_free_kib
+                            if d.fs_size_kib and d.fs_free_kib is not None else None),
+    UnraidSensorDescription(key="disk_free", device_class=SensorDeviceClass.DATA_SIZE,
+                            native_unit_of_measurement=UnitOfInformation.KIBIBYTES,
+                            state_class=SensorStateClass.MEASUREMENT, suggested_display_precision=0,
+                            value_fn=lambda d: d.fs_free_kib if d.fs_size_kib else None),
     UnraidSensorDescription(key="disk_status", device_class=SensorDeviceClass.ENUM, options=list(DISK_STATUSES),
                             value_fn=lambda d: d.status),
 )
@@ -377,8 +390,10 @@ def _plan(coordinator: UnraidCoordinator, snapshot: Snapshot) -> Iterator[Planne
             key = f"{desc.key}_{disk.name}"
             make = partial(UnraidSensor, coordinator, desc, disk_device(coordinator, disk), key, disk.name, find_disk)
             # Pool members (raid2, raid3, ...) carry no filesystem of their
-            # own: a usage sensor there would stay unknown for good.
-            yield key, None if desc.key == "disk_usage" and disk.fs_size_kib <= 0 else make
+            # own. Keep keys expected during FS loss without creating bogus
+            # zero capacities on members, parity drives or empty filesystems.
+            no_fs = not disk.fs_size_kib
+            yield key, None if desc.key in {"disk_usage", "disk_total", "disk_used", "disk_free"} and no_fs else make
     for container in snapshot.containers:
         for role in ("cpu", "ram_used", "ram_limit"):
             key = f"container_{role}_{container_key(snapshot, container)}"

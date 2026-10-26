@@ -115,11 +115,22 @@ class Disk:
     status: str                # mapped, see disk_status()
     temp: int | None           # None when Unraid reports "*"
     spundown: bool
-    fs_size_kib: int
-    fs_free_kib: int
+    fs_size_kib: int | None
+    fs_free_kib: int | None
     usage_percent: float | None
     errors: int
     fs_status: str
+
+
+def _filesystem_kib(value: str | None) -> int | None:
+    """Unraid's integer KiB counters; absent/bad readings are not zero."""
+    raw = (value or "").strip()
+    if not re.fullmatch(r"[0-9]+", raw):
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
 
 
 def parse_disks(text: str) -> list[Disk]:
@@ -130,9 +141,11 @@ def parse_disks(text: str) -> list[Disk]:
             continue                       # empty slot
         raw_temp = sec.get("temp", "*").strip()
         temp = _int(raw_temp) if raw_temp.lstrip("-").isdigit() else None
-        size = _int(sec.get("fsSize"))
-        free = _int(sec.get("fsFree"))
-        usage = round((size - free) / size * 100, 1) if size > 0 else None
+        size = _filesystem_kib(sec.get("fsSize"))
+        free = _filesystem_kib(sec.get("fsFree"))
+        if size is not None and free is not None and free > size:
+            free = None                    # inconsistent filesystem counters
+        usage = round((size - free) / size * 100, 1) if size and free is not None else None
         disks.append(
             Disk(
                 name=sec.get("name") or name,

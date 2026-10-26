@@ -43,7 +43,7 @@ _ENTITY_SECTIONS: tuple[tuple[tuple[str, ...], frozenset[str]], ...] = (
     # snapshot whenever `docker ps` fails.
     (("stack_", "restart_stack_", "update_all_stack_"), frozenset({"docker", "compose", "stacks"})),
     (("vm_", "vm_state_", "restart_vm_"), frozenset({"vms"})),
-    (("disk_temp_", "disk_usage_", "disk_status_", "disk_spundown_"), frozenset({"disks"})),
+    (("disk_temp_", "disk_usage_", "disk_total_", "disk_used_", "disk_free_", "disk_status_", "disk_spundown_"), frozenset({"disks"})),
     (("share_used_", "share_free_"), frozenset({"shares"})),
     (("gpu_util_", "gpu_vram_", "gpu_temp_", "gpu_power_", "gpu_fan_"), frozenset({"gpu"})),
     (("temp_", "fan_"), frozenset({"sensors"})),

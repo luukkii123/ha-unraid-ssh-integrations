@@ -145,6 +145,9 @@
       "gpu_fan": {"name": "GPU {index} {gpu} fan speed"},
       "disk_temp": {"name": "Temperature"},
       "disk_usage": {"name": "Usage"},
+      "disk_total": {"name": "Total space"},
+      "disk_used": {"name": "Used space"},
+      "disk_free": {"name": "Free space"},
       "disk_status": {
         "name": "Status",
         "state": {"ok": "OK", "new": "New", "disabled": "Disabled", "invalid": "Invalid", "missing": "Missing", "not_present": "Not present", "unknown": "Unknown"}

@@ -92,7 +92,7 @@ ohne Compose-Projekt. Namen folgen dem Muster `<Präfix> <Gerät> …`.
 | Temperaturen | je Kanal aus `/sys/class/hwmon` ein Sensor, dazu die festen Sensoren **CPU-Temperatur** und **Mainboard-Temperatur** |
 | Lüfter | je Lüfter Drehzahl (RPM) und PWM-Ansteuerung (%); GPU-Lüfter in Prozent. Nur Anzeige — die Integration schreibt nie nach `pwm` |
 | GPU (NVIDIA, über `nvidia-smi`) | Auslastung, VRAM, Temperatur, Leistungsaufnahme, Lüfter |
-| Platten | Temperatur, Belegung, Status; „Standby" für schlafende Platten |
+| Platten und Pools | Temperatur, Belegung in Prozent, gesamter/belegter/freier Speicher, Status; „Standby" für schlafende Platten |
 | Shares | Belegter und freier Speicher |
 | Docker-Container | Schalter *Status* (an/aus), Neustart-Knopf, CPU-, RAM- und RAM-Limit-Sensoren, Update-Entität |
 | Compose-Stacks | Schalter *Status*, Neustart-Knopf, Update-Knopf „Alle Container aktualisieren" |
@@ -101,6 +101,10 @@ ohne Compose-Projekt. Namen folgen dem Muster `<Präfix> <Gerät> …`.
 
 Hinweise:
 
+- **Speicherplatz** kommt direkt aus den Dateisystemwerten von Unraid, mit
+  KiB als nativer Einheit. Bei Pools liefert das Gerät mit Dateisystem die
+  Poolkapazität; Mitglieder ohne eigenes Dateisystem bekommen keine
+  Kapazitätssensoren. Fehlende oder ungültige Werte bleiben unbekannt.
 - **Mainboard-Sensoren** (SYSTIN, CPUTIN, Gehäuselüfter) erscheinen erst, wenn
   der Treiber des Super-I/O-Chips geladen ist; Unraid lädt ihn nicht von allein.
   Entweder das Plugin *Dynamix System Temperature* nutzen oder den Treiber

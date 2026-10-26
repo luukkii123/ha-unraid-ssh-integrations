@@ -64,6 +64,40 @@ def test_parse_disks_star_temp_and_zero_fs():
     assert disk.usage_percent is None
 
 
+@pytest.mark.parametrize("size,free,want_size,want_free,want_usage", [
+    ("1000", "250", 1000, 250, 75.0),
+    ("1000", "0", 1000, 0, 100.0),
+    ("1000", "1000", 1000, 1000, 0.0),
+    ("0", "0", 0, 0, None),
+    (None, None, None, None, None),
+    ("", "", None, None, None),
+    ("invalid", "100", None, 100, None),
+    ("-100", "0", None, 0, None),
+    ("1.5", "0", None, 0, None),
+    ("NaN", "0", None, 0, None),
+    ("1000", None, 1000, None, None),
+    ("1000", "", 1000, None, None),
+    ("1000", "invalid", 1000, None, None),
+    ("1000", "-1", 1000, None, None),
+    ("1000", "1001", 1000, None, None),
+    ("1000", "2.5", 1000, None, None),
+    ("1000", "inf", 1000, None, None),
+    (" 1000 ", " 250 ", 1000, 250, 75.0),
+])
+def test_disk_filesystem_numbers_do_not_turn_missing_or_invalid_values_into_zero(
+    size, free, want_size, want_free, want_usage
+):
+    text = '["disk1"]\nname="disk1"\ndevice="sdb"\n'
+    if size is not None:
+        text += f'fsSize="{size}"\n'
+    if free is not None:
+        text += f'fsFree="{free}"\n'
+    (disk,) = parse.parse_disks(text)
+    assert (disk.fs_size_kib, disk.fs_free_kib, disk.usage_percent) == (
+        want_size, want_free, want_usage
+    )
+
+
 @pytest.mark.parametrize(
     "raw,expected",
     [("DISK_OK", "ok"), ("DISK_NP_DSBL", "not_present"), ("DISK_DSBL", "disabled"),
