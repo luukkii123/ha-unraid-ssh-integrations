@@ -7,7 +7,7 @@ from typing import Any
 from . import parse
 
 HARDWARE_KEYS = ('board_vendor','board_name','board_version','bios_vendor','bios_version','bios_date','product_name','cpu_model')
-FAST = ('dash_cpu','dash_memory','dash_interfaces','dash_power','dash_storage','dash_mounts')
+FAST = ('dash_cpu','dash_memory','dash_interfaces','dash_power','dash_storage','dash_mounts','dash_docker')
 INVENTORY = ('dash_hardware','dash_smart','dash_pools','dash_shares','dash_gpu')
 
 @dataclass(frozen=True)
@@ -162,6 +162,10 @@ def parse_dashboard_sections(sections: dict[str,str], previous: DashboardTelemet
         raw['dash_power']=current
         return tuple(rows)
     read('dash_power',power,'power_packages')
+    docker=parse.parse_flat_ini(sections.get('dash_docker','')).get('DOCKER_IMAGE_TYPE','unknown')
+    docker_mode=docker if docker in {'image','folder'} else 'unknown'
+    if 'dash_docker' not in sections: failed.add('dash_docker')
+    else: failed.discard('dash_docker'); times['dash_docker']=sampled_at
     def storage(text):
         mounts=set()
         for line in sections['dash_mounts'].splitlines():
@@ -170,7 +174,7 @@ def parse_dashboard_sections(sections: dict[str,str], previous: DashboardTelemet
         result=[]
         for item in json.loads(text):
             kind={'/boot':'boot','/var/log':'log','/var/lib/docker':'docker_vdisk'}.get(item['target'])
-            if not kind or item['target'] not in mounts: continue
+            if not kind or item['target'] not in mounts or (kind=='docker_vdisk' and docker_mode!='image'): continue
             total,used,free=(int(item[k]) for k in ('size','used','avail'))
             if total<=0 or min(used,free)<0 or max(used,free)>total: continue
             result.append(dict(kind=kind,total_bytes=total,used_bytes=used,free_bytes=free,percent=used/total*100))
@@ -229,4 +233,4 @@ def parse_dashboard_sections(sections: dict[str,str], previous: DashboardTelemet
         if rows is not None:
             known_ids[source]=tuple(row[key] for row in rows)
     registration=parse.parse_flat_ini(sections.get('var','')).get('regTy')
-    return DashboardTelemetry(**values,registration=registration,failed=frozenset(failed),sample_times=times,raw=raw,known_ids=known_ids)
+    return DashboardTelemetry(**values,registration=registration,failed=frozenset(failed),sample_times=times,raw=raw,known_ids=known_ids,docker_mode=docker_mode)

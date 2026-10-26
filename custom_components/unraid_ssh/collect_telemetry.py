@@ -146,7 +146,7 @@ _POWER = ('for p in /sys/class/powercap/*; do [ -r "$p/name" ] || continue; '
 
 
 def dashboard_sections(*, include_inventory: bool, include_streams: bool) -> tuple[tuple[str,str], ...]:
-    sections=[('dash_cpu','cat /proc/stat'),('dash_memory','cat /proc/meminfo'),('dash_interfaces',_INTERFACES),('dash_power',_POWER),('dash_storage',_STORAGE),('dash_mounts','cat /proc/self/mountinfo')]
+    sections=[('dash_cpu','cat /proc/stat'),('dash_memory','cat /proc/meminfo'),('dash_interfaces',_INTERFACES),('dash_power',_POWER),('dash_storage',_STORAGE),('dash_mounts','cat /proc/self/mountinfo'),('dash_docker',"grep '^DOCKER_IMAGE_TYPE=' /boot/config/docker.cfg")]
     if include_inventory:
         sections.extend((('dash_hardware',_HARDWARE),('dash_smart',_SMART),('dash_pools',_POOLS),('dash_shares',_SHARES),('dash_gpu','nvidia-smi --query-gpu=index,driver_version --format=csv,noheader,nounits')))
     if include_streams: sections.append(('dash_streams',_STREAMS))

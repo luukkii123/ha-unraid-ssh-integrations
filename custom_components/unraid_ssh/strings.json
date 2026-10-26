@@ -77,16 +77,35 @@
     }
   },
   "device": {
-    "container": {"name": "{prefix} {component}"},
-    "disk": {"name": "{prefix} Disk {component}"},
-    "stack": {"name": "{prefix} Stack {component}"},
-    "vm": {"name": "{prefix} VM {component}"},
-    "standalone_containers": {"name": "{prefix} Standalone containers"},
-    "share": {"name": "{prefix} Share {component}"}
+    "container": {
+      "name": "{prefix} {component}"
+    },
+    "disk": {
+      "name": "{prefix} Disk {component}"
+    },
+    "stack": {
+      "name": "{prefix} Stack {component}"
+    },
+    "vm": {
+      "name": "{prefix} VM {component}"
+    },
+    "standalone_containers": {
+      "name": "{prefix} Standalone containers"
+    },
+    "share": {
+      "name": "{prefix} Share {component}"
+    }
   },
   "entity": {
     "sensor": {
-      "update_queue": {"name": "Update queue", "state": {"idle": "Idle", "active": "Active", "blocked": "Waiting for recovery"}},
+      "update_queue": {
+        "name": "Update queue",
+        "state": {
+          "idle": "Idle",
+          "active": "Active",
+          "blocked": "Waiting for recovery"
+        }
+      },
       "container_cpu": {
         "name": "{container} CPU usage"
       },
@@ -120,70 +139,223 @@
       "vm_ram_host_rss": {
         "name": "Host RAM (RSS)"
       },
-      "cpu_percent": {"name": "CPU usage"},
-      "ram_percent": {"name": "Memory usage"},
-      "load_1": {"name": "System load (1 min)"},
-      "uptime": {"name": "Last boot"},
+      "cpu_percent": {
+        "name": "CPU usage"
+      },
+      "ram_percent": {
+        "name": "Memory usage"
+      },
+      "load_1": {
+        "name": "System load (1 min)"
+      },
+      "uptime": {
+        "name": "Last boot"
+      },
       "array_state": {
         "name": "Array state",
-        "state": {"started": "Started", "stopped": "Stopped", "starting": "Starting", "stopping": "Stopping", "unknown": "Unknown"}
+        "state": {
+          "started": "Started",
+          "stopped": "Stopped",
+          "starting": "Starting",
+          "stopping": "Stopping",
+          "unknown": "Unknown"
+        }
       },
-      "parity_progress": {"name": "Parity check progress"},
-      "parity_errors": {"name": "Parity errors"},
-      "cpu_temp": {"name": "CPU temperature"},
-      "board_temp": {"name": "Board temperature"},
-      "hw_temp": {"name": "Temperature {chip} {label}"},
-      "fan_rpm": {"name": "Fan {label} speed"},
-      "fan_percent": {"name": "Fan {label} PWM duty"},
-      "updates_available": {"name": "Containers with updates"},
-      "share_used": {"name": "Used space"},
-      "share_free": {"name": "Free space"},
-      "gpu_util": {"name": "GPU {index} {gpu} utilization"},
-      "gpu_vram": {"name": "GPU {index} {gpu} VRAM usage"},
-      "gpu_temp": {"name": "GPU {index} {gpu} temperature"},
-      "gpu_power": {"name": "GPU {index} {gpu} power draw"},
-      "gpu_fan": {"name": "GPU {index} {gpu} fan speed"},
-      "disk_temp": {"name": "Temperature"},
-      "disk_usage": {"name": "Usage"},
-      "disk_total": {"name": "Total space"},
-      "disk_used": {"name": "Used space"},
-      "disk_free": {"name": "Free space"},
+      "parity_progress": {
+        "name": "Parity check progress"
+      },
+      "parity_errors": {
+        "name": "Parity errors"
+      },
+      "cpu_temp": {
+        "name": "CPU temperature"
+      },
+      "board_temp": {
+        "name": "Board temperature"
+      },
+      "hw_temp": {
+        "name": "Temperature {chip} {label}"
+      },
+      "fan_rpm": {
+        "name": "Fan {label} speed"
+      },
+      "fan_percent": {
+        "name": "Fan {label} PWM duty"
+      },
+      "updates_available": {
+        "name": "Containers with updates"
+      },
+      "share_used": {
+        "name": "Used space"
+      },
+      "share_free": {
+        "name": "Free space"
+      },
+      "gpu_util": {
+        "name": "GPU {index} {gpu} utilization"
+      },
+      "gpu_vram": {
+        "name": "GPU {index} {gpu} VRAM usage"
+      },
+      "gpu_temp": {
+        "name": "GPU {index} {gpu} temperature"
+      },
+      "gpu_power": {
+        "name": "GPU {index} {gpu} power draw"
+      },
+      "gpu_fan": {
+        "name": "GPU {index} {gpu} fan speed"
+      },
+      "disk_temp": {
+        "name": "Temperature"
+      },
+      "disk_usage": {
+        "name": "Usage"
+      },
+      "disk_total": {
+        "name": "Total space"
+      },
+      "disk_used": {
+        "name": "Used space"
+      },
+      "disk_free": {
+        "name": "Free space"
+      },
       "disk_status": {
         "name": "Status",
-        "state": {"ok": "OK", "new": "New", "disabled": "Disabled", "invalid": "Invalid", "missing": "Missing", "not_present": "Not present", "unknown": "Unknown"}
+        "state": {
+          "ok": "OK",
+          "new": "New",
+          "disabled": "Disabled",
+          "invalid": "Invalid",
+          "missing": "Missing",
+          "not_present": "Not present",
+          "unknown": "Unknown"
+        }
       },
       "vm_state": {
         "name": "Operating state",
-        "state": {"running": "Running", "shut_off": "Shut off", "paused": "Paused", "in_shutdown": "Shutting down", "crashed": "Crashed", "pmsuspended": "Suspended", "idle": "Idle", "unknown": "Unknown"}
+        "state": {
+          "running": "Running",
+          "shut_off": "Shut off",
+          "paused": "Paused",
+          "in_shutdown": "Shutting down",
+          "crashed": "Crashed",
+          "pmsuspended": "Suspended",
+          "idle": "Idle",
+          "unknown": "Unknown"
+        }
+      },
+      "dashboard_cpu": {
+        "name": "CPU dashboard"
+      },
+      "dashboard_memory": {
+        "name": "Memory dashboard"
+      },
+      "dashboard_hardware": {
+        "name": "Hardware dashboard"
+      },
+      "dashboard_interfaces": {
+        "name": "Interfaces dashboard"
+      },
+      "dashboard_storage": {
+        "name": "Storage dashboard"
+      },
+      "dashboard_shares": {
+        "name": "Shares dashboard"
+      },
+      "dashboard_vms": {
+        "name": "VM dashboard"
+      },
+      "cpu_power": {
+        "name": "CPU power"
+      },
+      "boot_usage": {
+        "name": "Boot usage"
+      },
+      "log_usage": {
+        "name": "Log usage"
+      },
+      "docker_vdisk_usage": {
+        "name": "Docker image usage"
+      },
+      "net_rx": {
+        "name": "Network received {interface}"
+      },
+      "net_tx": {
+        "name": "Network sent {interface}"
+      },
+      "disk_smart": {
+        "name": "SMART status",
+        "state": {
+          "passed": "Passed",
+          "warning": "Warning",
+          "failed": "Failed",
+          "unknown": "Unknown"
+        }
       }
     },
     "binary_sensor": {
-      "array_started": {"name": "Array started"},
-      "parity_running": {"name": "Parity check running"},
-      "mover_active": {"name": "Mover active"},
-      "disk_spundown": {"name": "Standby"}
+      "array_started": {
+        "name": "Array started"
+      },
+      "parity_running": {
+        "name": "Parity check running"
+      },
+      "mover_active": {
+        "name": "Mover active"
+      },
+      "disk_spundown": {
+        "name": "Standby"
+      }
     },
     "button": {
-      "update_all": {"name": "Install all updates"},
-      "stack_update_all": {"name": "Update all containers"},
+      "update_all": {
+        "name": "Install all updates"
+      },
+      "stack_update_all": {
+        "name": "Update all containers"
+      },
       "vm_restart": {
         "name": "Restart"
       },
-      "vm_force_stop": {"name": "Force stop"},
-      "container_restart": {"name": "{container} restart"},
-      "standalone_restart": {"name": "Restart"},
-      "stack_restart": {"name": "Restart"},
-      "check_updates": {"name": "Check for updates"}
+      "vm_force_stop": {
+        "name": "Force stop"
+      },
+      "container_restart": {
+        "name": "{container} restart"
+      },
+      "standalone_restart": {
+        "name": "Restart"
+      },
+      "stack_restart": {
+        "name": "Restart"
+      },
+      "check_updates": {
+        "name": "Check for updates"
+      }
     },
     "switch": {
-      "container": {"name": "{container} status"},
-      "standalone_container": {"name": "Status"},
-      "stack": {"name": "Status"},
-      "vm": {"name": "Status"}
+      "container": {
+        "name": "{container} status"
+      },
+      "standalone_container": {
+        "name": "Status"
+      },
+      "stack": {
+        "name": "Status"
+      },
+      "vm": {
+        "name": "Status"
+      }
     },
     "update": {
-      "standalone_update": {"name": "Update"},
-      "container_update": {"name": "{container} update"}
+      "standalone_update": {
+        "name": "Update"
+      },
+      "container_update": {
+        "name": "{container} update"
+      }
     }
   }
 }

@@ -352,6 +352,110 @@ class UpdatesAvailableSensor(CoordinatorEntity[UpdateCoordinator], SensorEntity)
 Planned = tuple[str, Callable[[], Any] | None]
 
 
+DASHBOARD = {
+    "dashboard_cpu": (("cores", "power_packages"), ("dash_cpu", "dash_power")),
+    "dashboard_memory": (("memory",), ("dash_memory",)),
+    "dashboard_hardware": (("hardware", "gpu_info", "registration"), ("dash_hardware", "dash_gpu", "var")),
+    "dashboard_interfaces": (("interfaces",), ("dash_interfaces",)),
+    "dashboard_storage": (("storage", "pools", "docker_mode"), ("dash_storage", "dash_mounts", "dash_pools", "dash_docker")),
+    "dashboard_shares": (("shares",), ("dash_shares", "dash_streams", "shares")),
+    "dashboard_vms": (("vms",), ("vm_stats", "vms")),
+}
+_PUBLIC_KEYS = {"power_packages": "packages", "gpu_info": "gpus", "storage": "filesystems"}
+
+
+class DashboardSensor(UnraidEntity, SensorEntity):
+    """Current dashboard projections whose lists never enter Recorder."""
+    # HA freezes exclusions in Entity.__init_subclass__; setting them on an
+    # instance is too late. The explicit union covers every projection here.
+    _unrecorded_attributes = frozenset({
+        "cores", "packages", "memory", "hardware", "gpus", "registration",
+        "interfaces", "filesystems", "pools", "docker_mode", "shares", "vms",
+        "sampled_at", "failed_sections",
+    })
+
+    def __init__(self, coordinator, key):
+        fields, self._sources = DASHBOARD[key]
+        self._fields = fields
+        super().__init__(coordinator, SensorEntityDescription(key=key), server_device(coordinator), key)
+
+    @property
+    def native_value(self):
+        if self.snapshot is None: return "unavailable"
+        data = self.snapshot.telemetry
+        present = [getattr(data,key) is not None and (key != "docker_mode" or data.docker_mode != "unknown") for key in self._fields]
+        failures = set(self._sources) & (data.failed | self.snapshot.failed)
+        return "unavailable" if not any(present) else "partial" if failures or not all(present) else "ok"
+
+    @property
+    def extra_state_attributes(self):
+        if self.snapshot is None: return None
+        data = self.snapshot.telemetry
+        times = {source:data.sample_times[source] for source in self._sources if source in data.sample_times}
+        return {"schema_version":1, "sampled_at":times,
+                "failed_sections":sorted(set(self._sources) & (data.failed | self.snapshot.failed)),
+                **{_PUBLIC_KEYS.get(key,key):getattr(data,key) for key in self._fields}}
+
+
+def _power(snapshot):
+    packages=snapshot.telemetry.power_packages
+    if not packages or any(row['power_w'] is None for row in packages): return None
+    return sum(row['power_w'] for row in packages)
+
+
+def _usage(snapshot,kind):
+    return next((row['percent'] for row in snapshot.telemetry.storage or () if row['kind']==kind),None)
+
+
+def _interface(snapshot,key):
+    return next((row for row in snapshot.telemetry.interfaces or () if row['id']==key),None)
+
+
+def _smart(snapshot,key):
+    return next((row for row in snapshot.telemetry.smart or () if row['name']==key),None)
+
+
+class DashboardNumber(UnraidSensor):
+    @property
+    def available(self):
+        return super().available and self.native_value is not None
+
+
+class SmartSensor(DashboardNumber):
+    _unrecorded_attributes=frozenset({"details"})
+
+
+def _plan_dashboard(coordinator,snapshot,server):
+    for key in DASHBOARD:
+        yield key,partial(DashboardSensor,coordinator,key)
+    desc=UnraidSensorDescription(key="cpu_power",device_class=SensorDeviceClass.POWER,
+        native_unit_of_measurement=UnitOfPower.WATT,state_class=SensorStateClass.MEASUREMENT,value_fn=_power)
+    yield "cpu_power",partial(DashboardNumber,coordinator,desc,server,"cpu_power")
+    for kind in ("boot","log","docker_vdisk"):
+        key=kind+"_usage"
+        desc=UnraidSensorDescription(key=key,native_unit_of_measurement=PERCENTAGE,
+            state_class=SensorStateClass.MEASUREMENT,value_fn=partial(_usage,kind=kind))
+        yield key,partial(DashboardNumber,coordinator,desc,server,key)
+    keys=set(snapshot.telemetry.known_ids.get("dash_interfaces",())) | {row['id'] for row in snapshot.telemetry.interfaces or ()}
+    for identifier in sorted(keys):
+        row=_interface(snapshot,identifier)
+        name=row['name'] if row else bytes.fromhex(identifier).decode('utf-8')
+        for direction in ("rx","tx"):
+            key=f"net_{direction}_{identifier}"
+            desc=UnraidSensorDescription(key="net_"+direction,native_unit_of_measurement="B/s",
+                device_class=SensorDeviceClass.DATA_RATE,state_class=SensorStateClass.MEASUREMENT,
+                value_fn=lambda row,field=direction+"_bytes_s":row.get(field))
+            yield key,partial(DashboardNumber,coordinator,desc,server,key,identifier,_interface,{"interface":name})
+    smart_names=set(snapshot.telemetry.known_ids.get("dash_smart",())) | {row['name'] for row in snapshot.telemetry.smart or ()}
+    for name in sorted(smart_names):
+        key="disk_smart_"+name
+        disk=find_disk(snapshot,name)
+        desc=UnraidSensorDescription(key="disk_smart",device_class=SensorDeviceClass.ENUM,
+            options=["passed","warning","failed","unknown"],value_fn=lambda row:row['status'],
+            attrs_fn=lambda row:{k:row.get(k) for k in ("sampled_at","source","stale","details")})
+        yield key,partial(SmartSensor,coordinator,desc,disk_device(coordinator,disk),key,name,_smart) if disk else None
+
+
 def _plan(coordinator: UnraidCoordinator, snapshot: Snapshot) -> Iterator[Planned]:
     """Every unique-id suffix this platform owns, walked exactly once.
 
@@ -367,6 +471,7 @@ def _plan(coordinator: UnraidCoordinator, snapshot: Snapshot) -> Iterator[Planne
     the next poll, and none of them is an orphan.
     """
     server = server_device(coordinator)
+    yield from _plan_dashboard(coordinator,snapshot,server)
     yield "update_queue", partial(UpdateQueueSensor, coordinator, SensorEntityDescription(key="update_queue"), server, "update_queue")
     for desc in SERVER:
         yield desc.key, partial(UnraidSensor, coordinator, desc, server, desc.key)

@@ -104,3 +104,10 @@ def test_counter_reset_and_device_hotplug_never_publish_negative_or_zero():
     assert reset.interfaces[0]['rx_bytes_s'] is None
     row={'net.0.name':'vnet0','net.0.rx.bytes':20,'net.1.name':'vnet1','net.1.rx.bytes':10}
     assert telemetry._device_rate(row,{'net.0.name':'vnet0','net.0.rx.bytes':1},'net','rx.bytes',1) is None
+
+
+@pytest.mark.parametrize('mode,want',[('image',('docker_vdisk',)),('folder',()),('unexpected',())])
+def test_docker_capacity_requires_image_mode_and_actual_mount(mode,want):
+    data=telemetry.parse_dashboard_sections(sample(dash_docker=f'DOCKER_IMAGE_TYPE="{mode}"',dash_mounts='1 0 1:1 / /var/lib/docker rw - btrfs /dev/loop0 rw'),None,sampled_at=1)
+    assert tuple(row['kind'] for row in data.storage)==want
+    assert data.docker_mode==(mode if mode in {'image','folder'} else 'unknown')
