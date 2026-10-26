@@ -103,6 +103,11 @@ class UnraidCoordinator(DataUpdateCoordinator[Snapshot]):
         self._inventory_due = 0.0
         self._streams_due = 0.0
 
+    async def async_refresh_inventory(self) -> None:
+        """A guarded array start needs current pool membership, even off cadence."""
+        self._inventory_due = 0.0
+        await self.async_refresh()
+
     async def _async_update_data(self) -> Snapshot:
         now = monotonic()
         include_inventory = now >= self._inventory_due

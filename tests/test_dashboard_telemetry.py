@@ -9,7 +9,7 @@ def sample(**updates):
     sections = {'dash_cpu': 'cpu0 100 0 20 300 10 0 0 0 30 0\nbtime 7\n',
                 'dash_memory': 'MemTotal: 1000 kB\nMemAvailable: 600 kB\nMemFree: 200 kB\nBuffers: 50 kB\nCached: 300 kB\nSReclaimable: 100 kB\nShmem: 50 kB\n',
                 'dash_interfaces': json.dumps([{'ifindex': 2, 'ifname': 'eth.0', 'mtu':1500,'operstate':'UP', 'stats64':{'rx':{'bytes':100},'tx':{'bytes':200}}}]),
-                'dash_power': 'package-0\tpackage-0\t9000000\t10000000\npackage-0:0\tcore\t100\t1000\n',
+                'dash_power': 'package-0\tpackage-0\t9000000\t10000000\t1000000\npackage-0:0\tcore\t100\t1000\n',
                 'dash_storage': json.dumps([{'target':'/boot','size':100,'used':25,'avail':75},{'target':'/var/lib/docker','size':1000,'used':100,'avail':900}]),
                 'dash_mounts':'1 0 1:1 / /boot rw - vfat /dev/fake rw\n',
                 'dash_hardware':json.dumps({'board_name':'Imaginary Board','serial':'SECRET'}),
@@ -36,7 +36,7 @@ def test_cpu_guest_hotplug_and_memory_partition():
 
 def test_power_wrap_reboot_and_interfaces_identity():
     first=telemetry.parse_dashboard_sections(sample(),None,sampled_at=10)
-    second=telemetry.parse_dashboard_sections(sample(dash_power='package-0\tpackage-0\t1000000\t10000000',dash_interfaces=json.dumps([{'ifindex':2,'ifname':'eth.0','stats64':{'rx':{'bytes':300},'tx':{'bytes':600}}}])),first,sampled_at=12)
+    second=telemetry.parse_dashboard_sections(sample(dash_power='package-0\tpackage-0\t1000000\t10000000\t1000000',dash_interfaces=json.dumps([{'ifindex':2,'ifname':'eth.0','stats64':{'rx':{'bytes':300},'tx':{'bytes':600}}}])),first,sampled_at=12)
     assert second.power_packages == ({'id':'package-0','power_w':1.0,'source':'rapl'},)
     assert second.interfaces[0]['rx_bytes_s']==100
     changed=telemetry.parse_dashboard_sections(sample(dash_interfaces=json.dumps([{'ifindex':3,'ifname':'eth.0','stats64':{'rx':{'bytes':400},'tx':{'bytes':800}}}])),second,sampled_at=14)
@@ -111,3 +111,44 @@ def test_docker_capacity_requires_image_mode_and_actual_mount(mode,want):
     data=telemetry.parse_dashboard_sections(sample(dash_docker=f'DOCKER_IMAGE_TYPE="{mode}"',dash_mounts='1 0 1:1 / /var/lib/docker rw - btrfs /dev/loop0 rw'),None,sampled_at=1)
     assert tuple(row['kind'] for row in data.storage)==want
     assert data.docker_mode==(mode if mode in {'image','folder'} else 'unknown')
+
+
+def test_rapl_unknown_when_multiple_wraps_possible_or_no_power_bound():
+    first=telemetry.parse_dashboard_sections(sample(dash_power='package-0\tpackage-0\t9000000\t10000000\t1000000'),None,sampled_at=10)
+    safe=telemetry.parse_dashboard_sections(sample(dash_power='package-0\tpackage-0\t1000000\t10000000\t1000000'),first,sampled_at=12)
+    assert safe.power_packages[0]['power_w']==1
+    late=telemetry.parse_dashboard_sections(sample(dash_power='package-0\tpackage-0\t1000000\t10000000\t1000000'),first,sampled_at=310)
+    assert late.power_packages[0]['power_w'] is None
+    unbounded=telemetry.parse_dashboard_sections(sample(dash_power='package-0\tpackage-0\t1000000\t10000000'),first,sampled_at=12)
+    assert unbounded.power_packages[0]['power_w'] is None
+
+
+def test_host_reboot_resets_network_sample_even_if_index_and_counters_increase():
+    first=telemetry.parse_dashboard_sections(sample(),None,sampled_at=1)
+    second=telemetry.parse_dashboard_sections(sample(dash_cpu='cpu0 150 0 20 350 10 0 0 0\nbtime 8',dash_interfaces=json.dumps([{'ifindex':2,'ifname':'eth.0','stats64':{'rx':{'bytes':300},'tx':{'bytes':600}}}])),first,sampled_at=2)
+    assert second.interfaces[0]['rx_bytes_s'] is None
+
+
+def test_vm_without_runtime_identity_has_no_rate():
+    sections=sample(vms=' Id  Name  State\n---\n -  ExampleVM  running',vm_stats="Domain: 'ExampleVM'\n net.0.name=vnet0\n net.0.rx.bytes=100\n net.0.tx.bytes=200")
+    first=telemetry.parse_dashboard_sections(sections,None,sampled_at=1)
+    sections['vm_stats']=sections['vm_stats'].replace('=100','=200').replace('=200','=400')
+    second=telemetry.parse_dashboard_sections(sections,first,sampled_at=2)
+    assert second.vms[0]['net_rx_bytes_s'] is None
+
+
+def test_nvme_available_spare_warning_and_bare_cached_health():
+    data=telemetry.parse_dashboard_sections(sample(dash_smart=json.dumps({'disk1':{'text':'PASSED\nAvailable Spare: 4%\nAvailable Spare Threshold: 10%','mtime':123,'stale':False},'disk2':{'text':'NOK','mtime':123,'stale':True}})),None,sampled_at=1)
+    assert data.smart[0]['status']=='warning'
+    assert data.smart[1]['status']=='failed'
+
+
+def test_missing_smart_cache_exposes_unknown_for_known_disk():
+    data=telemetry.parse_dashboard_sections(sample(dash_smart='{}',disks='["disk1"]\nname="disk1"\ndevice="fake-a"\ntype="Data"'),None,sampled_at=1)
+    assert data.smart[0]['status']=='unknown'
+
+
+def test_smart_details_reject_unrecognized_attribute_labels():
+    data=telemetry.parse_dashboard_sections(sample(dash_smart=json.dumps({'disk1':{'text':'PASSED\n197 SECRET_SERIAL_123 0x0032 100 100 000 Old_age Always - 2','mtime':123,'stale':False}})),None,sampled_at=1)
+    assert data.smart[0]['details']==[]
+    assert 'SECRET' not in str(data.smart)

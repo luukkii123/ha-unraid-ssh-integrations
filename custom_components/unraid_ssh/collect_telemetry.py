@@ -1,6 +1,5 @@
 """Fixed, read-only dashboard probes; no optional plugin code is executed."""
 import shlex
-from .telemetry import FAST, INVENTORY
 
 
 def _php(script):
@@ -48,7 +47,7 @@ $disks = @parse_ini_file("/var/local/emhttp/disks.ini",true,INI_SCANNER_RAW);
 if ($disks === false) exit(1);
 $out = [];
 foreach ($disks as $key=>$disk) {
-    $name = $disk["name"] ?? $key;
+    $name = $disk["name"] ?? trim($key,'"');
     if (!preg_match('/^[a-zA-Z0-9_.-]+$/D',$name) || empty($disk["device"])) continue;
     $file = "/var/local/emhttp/smart/".$name;
     $size = @filesize($file);
@@ -64,24 +63,38 @@ echo json_encode((object)$out);
 _POOLS = _php(r'''
 $disks = @parse_ini_file("/var/local/emhttp/disks.ini",true,INI_SCANNER_RAW);
 if ($disks === false) exit(1);
-$out=[];
+$out=[]; $carriers=[]; $deviceNames=[];
+foreach ($disks as $key=>$disk) if (!empty($disk["device"])) $deviceNames[basename($disk["device"])]=$disk["name"] ?? trim($key,'"');
+function public_member($path,$deviceNames) {
+    $real=@realpath($path);
+    $device=basename($real === false ? $path : $real);
+    if (isset($deviceNames[$device])) return $deviceNames[$device];
+    // Persistent /dev/disk/by-id aliases can contain model and serial numbers.
+    // Only canonical Linux block identifiers may survive without an ini match.
+    if (preg_match('/^(?:sd[a-z]+[0-9]*|vd[a-z]+[0-9]*|hd[a-z]+[0-9]*|nvme[0-9]+n[0-9]+(?:p[0-9]+)?|mmcblk[0-9]+(?:p[0-9]+)?|dm-[0-9]+)$/D',$device)) return $device;
+    return null;
+}
 foreach ($disks as $key=>$disk) {
     if (($disk["type"] ?? "") !== "Cache") continue;
     $mount=$disk["fsMountpoint"] ?? "";
-    $name=$disk["name"] ?? $key;
-    if ($mount === "" || isset($seen[$mount])) continue;
-    $seen[$mount]=true;
+    if ($mount === "") continue;
+    $disk["name"]=$disk["name"] ?? trim($key,'"');
+    if (!isset($carriers[$mount]) || ((int)($disk["fsSize"] ?? 0)>0 && (int)($carriers[$mount]["fsSize"] ?? 0)===0)) $carriers[$mount]=$disk;
+}
+foreach ($carriers as $mount=>$disk) {
+    $name=$disk["name"];
     $fs=$disk["fsType"] ?? "";
     $state=($disk["fsStatus"] ?? "") === "Mounted" ? "unknown" : "unmounted";
     $members=[];
     $metadata=$disk["devices"] ?? "";
-    foreach (preg_split('/[ ,]+/',$metadata,-1,PREG_SPLIT_NO_EMPTY) as $member) $members[]=basename($member);
+    $expected=ctype_digit($metadata) ? (int)$metadata : null;
+    if ($expected === null) foreach (preg_split('/[ ,]+/',$metadata,-1,PREG_SPLIT_NO_EMPTY) as $member) { $public=public_member($member,$deviceNames); if ($public !== null) $members[]=$public; }
     if ($state !== "unmounted" && $fs === "btrfs") {
         exec("timeout 1 btrfs filesystem show ".escapeshellarg($mount),$show,$rc);
         if ($rc === 0) {
             $state="online";
             foreach ($show as $line) {
-                if (preg_match('/path\s+(\S+)/',$line,$m)) $members[]=basename($m[1]);
+                if (preg_match('/path\s+(\S+)/',$line,$m)) { $public=public_member($m[1],$deviceNames); if ($public !== null) $members[]=$public; else $state="unknown"; }
                 if (stripos($line,"missing") !== false) $state="degraded";
             }
             exec("timeout 1 btrfs device stats ".escapeshellarg($mount),$stats,$statsrc);
@@ -96,10 +109,12 @@ foreach ($disks as $key=>$disk) {
         if ($rc === 0 && $statusrc === 0 && isset($health[0])) {
             $cols=preg_split('/\s+/',trim($health[0]));
             $state=["ONLINE"=>"online","DEGRADED"=>"degraded","FAULTED"=>"faulted"][$cols[1] ?? ""] ?? "unknown";
-            foreach ($show as $line) if (preg_match('#^\s+(/dev/\S+)\s+#',$line,$m)) $members[]=basename($m[1]);
+            foreach ($show as $line) if (preg_match('#^\s+(/dev/\S+)\s+#',$line,$m)) { $public=public_member($m[1],$deviceNames); if ($public !== null) $members[]=$public; else $state="unknown"; }
         }
         unset($health,$show);
     }
+    $members=array_values(array_unique($members));
+    if ($state === "online" && $expected !== null && count($members)<$expected) $state="degraded";
     $total=isset($disk["fsSize"]) && ctype_digit($disk["fsSize"]) ? (int)$disk["fsSize"]*1024 : null;
     $free=isset($disk["fsFree"]) && ctype_digit($disk["fsFree"]) ? (int)$disk["fsFree"]*1024 : null;
     if ($total === null || $free === null || $free>$total) $total=$free=null;
@@ -111,7 +126,11 @@ _SHARES = _php(r'''
 $shares=@parse_ini_file("/var/local/emhttp/shares.ini",true,INI_SCANNER_RAW);
 $sec=@parse_ini_file("/var/local/emhttp/sec.ini",true,INI_SCANNER_RAW);
 if ($shares === false || $sec === false) exit(1);
-foreach ($shares as $name=>$share) {
+$normalized=[];
+foreach ($sec as $key=>$value) $normalized[trim($key,'"')]=$value;
+$sec=$normalized;
+foreach ($shares as $key=>$share) {
+    $name=$share["name"] ?? trim($key,'"');
     echo "[".json_encode($name)."]\n";
     foreach (["export","security"] as $key) if (isset($sec[$name][$key])) echo $key."=".json_encode($sec[$name][$key])."\n";
 }
@@ -128,7 +147,8 @@ foreach (array_unique($mounts) as $mount) $command.=" ".escapeshellarg($mount);
 exec($command,$lines,$rc);
 if ($rc !== 0) exit(1);
 $out=[];
-foreach ($shares as $name=>$share) {
+foreach ($shares as $key=>$share) {
+    $name=$share["name"] ?? trim($key,'"');
     $paths=[];
     foreach ($lines as $line) {
         if (!str_starts_with($line,"n")) continue;
@@ -142,7 +162,8 @@ echo json_encode((object)$out);
 _POWER = ('for p in /sys/class/powercap/*; do [ -r "$p/name" ] || continue; '
           'n=$(cat "$p/name") || continue; case "$n" in package-*) '
           'e=$(cat "$p/energy_uj") || continue; r=$(cat "$p/max_energy_range_uj") || continue; '
-          'printf "%s\\t%s\\t%s\\t%s\\n" "${p##*/}" "$n" "$e" "$r";; esac; done')
+          'b=$(cat "$p/max_power_range_uw" 2>/dev/null); '
+          'printf "%s\\t%s\\t%s\\t%s\\t%s\\n" "${p##*/}" "$n" "$e" "$r" "$b";; esac; done')
 
 
 def dashboard_sections(*, include_inventory: bool, include_streams: bool) -> tuple[tuple[str,str], ...]:

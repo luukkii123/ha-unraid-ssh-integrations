@@ -115,3 +115,26 @@ async def test_parity_binary_sensor_exposes_explicit_operation_state(hass,monkey
         assert current.attributes['state']==want
     finally:
         await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_array_start_refreshes_pool_inventory_before_guard(hass,monkeypatch,tmp_path):
+    from custom_components.unraid_ssh.coordinator import UnraidCoordinator
+    original=UnraidCoordinator._async_update_data
+    entry,_=await setup_buttons(hass,monkeypatch,tmp_path)
+    try:
+        fast=entry.runtime_data.coordinator
+        fast._inventory_due=float('inf')
+        fast._streams_due=float('inf')
+        fast._async_update_data=original.__get__(fast)
+        lines='\n'.join(f'{k}="{v}"' for k,v in {'mdState':'STOPPED','fsState':'Stopped','configValid':'yes','startMode':'Normal','mdNumMissing':'0','mdResync':'0','mdResyncPos':'0','mdResyncAction':'check','mdResyncCorr':'0'}.items())
+        commands=[]
+        async def run(command,*,timeout):
+            commands.append(command)
+            if '@@@' in command: return CommandResult(0,'@@@ var\n'+lines+'\n@@@ var status=0\n@@@ disks\n@@@ disks status=0\n@@@ end\n','')
+            return CommandResult(0,'','')
+        fast.client.run=run
+        await button(hass,entry,'array_start').async_press()
+        assert 'dash_pools status=' in commands[0]
+        assert commands[1]=="/usr/local/emhttp/plugins/dynamix/scripts/emcmd 'startState=STOPPED&cmdStart=Start'"
+    finally:
+        await hass.config_entries.async_unload(entry.entry_id)

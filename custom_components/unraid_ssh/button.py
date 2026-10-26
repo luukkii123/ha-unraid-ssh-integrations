@@ -180,7 +180,10 @@ class ServerActionButton(UnraidEntity, ButtonEntity):
         async with lock:
             if runtime.queue and runtime.queue.summary()["active"]:
                 raise self._error("server_update_active")
-            await self.coordinator.async_refresh()
+            if self._action is ServerAction.ARRAY_START:
+                await self.coordinator.async_refresh_inventory()
+            else:
+                await self.coordinator.async_refresh()
             if not self.coordinator.last_update_success or self.snapshot is None:
                 raise self._error("server_poll_failed")
             try:

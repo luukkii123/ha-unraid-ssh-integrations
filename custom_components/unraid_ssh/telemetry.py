@@ -69,15 +69,25 @@ def _smart(text):
         state='unknown'
         if re.search(r'(?:test result|Health Status):\s*(FAILED|NOK)\b',raw,re.I): state='failed'
         elif re.search(r'(?:test result|Health Status):\s*(PASSED|OK)\b',raw,re.I): state='passed'
+        elif re.search(r'^\s*(FAILED|NOK)\s*$',raw,re.M): state='failed'
+        elif re.search(r'^\s*(PASSED|OK)\s*$',raw,re.M): state='passed'
         details=[]
         for line in raw.splitlines():
             if re.match(r'\s*(5|187|197|198)\s+\w+',line):
                 cols=line.split()
-                if len(cols)>=10 and cols[-1].isdigit() and int(cols[-1])>0: details.append({'field':cols[1], 'value':int(cols[-1])})
+                labels={'5':{'Reallocated_Sector_Ct','Reallocated_Sector_Count'},
+                        '187':{'Reported_Uncorrect'},'197':{'Current_Pending_Sector'},
+                        '198':{'Offline_Uncorrectable'}}
+                if len(cols)>=10 and cols[1] in labels.get(cols[0],set()) and cols[-1].isdigit() and int(cols[-1])>0:
+                    details.append({'field':cols[1], 'value':int(cols[-1])})
             match=re.match(r'\s*(Critical Warning|Media and Data Integrity Errors|Available Spare):\s*(0x[0-9a-f]+|[0-9,]+)',line,re.I)
             if match:
                 value=int(match[2].replace(',',''),0 if match[2].startswith('0x') else 10)
                 if (match[1].lower()!='available spare' and value>0): details.append({'field':match[1], 'value':value})
+        spare=re.search(r'^Available Spare:\s*(\d+)%',raw,re.M)
+        threshold=re.search(r'^Available Spare Threshold:\s*(\d+)%',raw,re.M)
+        if spare and threshold and int(spare[1])<int(threshold[1]):
+            details.append({'field':'Available Spare','value':int(spare[1]),'threshold':int(threshold[1])})
         if details and state=='passed': state='warning'
         rows.append(dict(name=name,status=state,sampled_at=item.get('mtime'),source='emhttp_cache',stale=bool(item.get('stale')),details=details))
     return tuple(rows)
@@ -140,7 +150,7 @@ def parse_dashboard_sections(sections: dict[str,str], previous: DashboardTelemet
         for item in json.loads(text):
             name=item['ifname']; index=item['ifindex']; stats=item.get('stats64',item.get('stats',{}))
             rx=stats.get('rx',{}).get('bytes'); tx=stats.get('tx',{}).get('bytes')
-            identity=(name,index); before=old.get(identity,(None,None)); current[identity]=(rx,tx)
+            identity=(name,index); before=old.get(identity,(None,None)) if boot is not None and boot==previous.raw.get('dash_cpu',({},None))[1] else (None,None); current[identity]=(rx,tx)
             kind=item.get('linkinfo',{}).get('info_kind') or ('loopback' if item.get('link_type')=='loopback' else 'physical' if item.get('physical') else 'virtual')
             rows.append(dict(id=interface_key(name),name=name,kind=kind,state=str(item.get('operstate','unknown')).lower(),mtu=item.get('mtu'),speed_mbps=item.get('speed_mbps'),rx_bytes_s=_delta(rx,before[0],elapsed),tx_bytes_s=_delta(tx,before[1],elapsed)))
         raw['dash_interfaces']=current
@@ -151,13 +161,16 @@ def parse_dashboard_sections(sections: dict[str,str], previous: DashboardTelemet
         elapsed=sampled_at-previous.sample_times.get('dash_power',sampled_at)
         oldboot=previous.raw.get('dash_cpu',({},None))[1]
         for line in text.splitlines():
-            key,label,energy,limit=line.split('\t'); energy=int(energy); limit=int(limit)
+            fields=line.split('\t')
+            key,label,energy,limit=fields[:4]; energy=int(energy); limit=int(limit)
+            power_bound=int(fields[4]) if len(fields)>4 and fields[4].isdecimal() else None
             if not re.fullmatch(r'package[- ]\d+',label,re.I): continue
-            current[key]=(energy,limit); before=old.get(key); watts=None
-            if before and boot is not None and boot==oldboot and elapsed>0 and 0<=energy<limit and before[1]==limit and 0<=before[0]<limit:
+            current[key]=(energy,limit,power_bound); before=old.get(key); watts=None
+            if before and boot is not None and boot==oldboot and elapsed>0 and 0<=energy<limit and before[1]==limit and 0<=before[0]<limit and power_bound and before[2]==power_bound and elapsed*power_bound<limit:
                 delta=energy-before[0]
                 if delta<0: delta+=limit
-                watts=delta/elapsed/1e6
+                if delta <= elapsed*power_bound:
+                    watts=delta/elapsed/1e6
             rows.append(dict(id=key,power_w=watts,source='rapl'))
         raw['dash_power']=current
         return tuple(rows)
@@ -183,7 +196,14 @@ def parse_dashboard_sections(sections: dict[str,str], previous: DashboardTelemet
     read('dash_storage',storage,'storage')
     if 'dash_mounts' not in sections: failed.add('dash_mounts')
     read('dash_hardware',lambda t:{k:str(v) for k,v in json.loads(t).items() if k in HARDWARE_KEYS},'hardware')
-    read('dash_smart',_smart,'smart')
+    def smart(text):
+        rows=list(_smart(text))
+        names={row['name'] for row in rows}
+        for disk in parse.parse_disks(sections.get('disks','')):
+            if disk.name not in names:
+                rows.append(dict(name=disk.name,status='unknown',sampled_at=None,source='emhttp_cache',stale=True,details=[]))
+        return tuple(rows)
+    read('dash_smart',smart,'smart')
     def pools(text):
         result=[]
         for item in json.loads(text):
@@ -220,7 +240,7 @@ def parse_dashboard_sections(sections: dict[str,str], previous: DashboardTelemet
         elapsed=sampled_at-previous.sample_times.get('vm_stats',sampled_at)
         result=[]
         for name,runtime in instances.items():
-            row=vmrows.get(name,{}); old=oldrows.get(name,{}) if previous.raw.get('vms',{}).get(name)==runtime else {}
+            row=vmrows.get(name,{}); old=oldrows.get(name,{}) if runtime is not None and previous.raw.get('vms',{}).get(name)==runtime and boot is not None and boot==previous.raw.get('dash_cpu',({},None))[1] else {}
             cpu_rate=_delta(row.get('cpu.time'),old.get('cpu.time'),elapsed)
             result.append(dict(name=name,host_cpu_percent=cpu_rate/1e9*100/len(cpu) if cpu_rate is not None and cpu else None,
                 net_rx_bytes_s=_device_rate(row,old,'net','rx.bytes',elapsed),net_tx_bytes_s=_device_rate(row,old,'net','tx.bytes',elapsed),

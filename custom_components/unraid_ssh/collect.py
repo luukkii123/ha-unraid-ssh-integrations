@@ -216,23 +216,34 @@ def _build_sections(sections: tuple[tuple[str, str], ...]) -> str:
 
 
 def build_state_command(*, include_inventory: bool = False, include_streams: bool = False) -> str:
-    # Each group shares a monotone remote deadline. Every section still emits
-    # its status and the end marker when the deadline has expired.
-    sections = list(SECTIONS)
+    """One SSH call, with a separate eight-second monotone budget per group."""
     dashboard = dashboard_sections(include_inventory=include_inventory, include_streams=include_streams)
-    fast = sections
+    fast = list(SECTIONS)
     slow = []
-    for name, command in dashboard:
+    for name, command in dashboard[1:]:
         target = slow if name in {"dash_hardware", "dash_smart", "dash_pools", "dash_shares", "dash_gpu", "dash_streams"} else fast
         target.append((name, command))
+
+    def without_end(group):
+        return _build_sections(tuple(group)).rsplit("; ", 1)[0]
+
     def bounded(group):
         wrapped = []
         for name, command in group:
-            wrapped.append((name, 'remaining=$((dashboard_deadline-$(date +%s)));  [ "$remaining" -gt 0 ] || exit 124; '
+            wrapped.append((name, 'read dashboard_uptime rest < /proc/uptime; '
+                            'remaining=$((dashboard_deadline-${dashboard_uptime%%.*})); '
+                            '[ "$remaining" -gt 0 ] || exit 124; '
                             'timeout "$remaining" bash -o pipefail -c ' + shlex.quote(command)))
-        # SECONDS must be initialized in the same shell running each timeout.
-        return _build_sections(tuple(wrapped)).rsplit("; ", 1)[0]
-    return "export dashboard_deadline=$(($(date +%s)+8)); " + bounded(fast) + "; export dashboard_deadline=$(($(date +%s)+8)); " + bounded(slow) + "; echo '@@@ end'"
+        return without_end(wrapped)
+
+    deadline = 'read dashboard_uptime rest < /proc/uptime; export dashboard_deadline=$((${dashboard_uptime%%.*}+8))'
+    # The intention marker is emitted before any costly probe, including when
+    # the entire fast budget expires. Coordinator also knows the due groups.
+    parts = [without_end((dashboard[0],)), deadline, bounded(fast)]
+    if slow:
+        parts.extend((deadline, bounded(slow)))
+    parts.append("echo '@@@ end'")
+    return "; ".join(parts)
 
 #: A marker is `@@@ <name>` running to the end of its line. It is deliberately
 #: NOT required to start one: `echo '@@@ next'` writes straight after whatever
