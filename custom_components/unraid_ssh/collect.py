@@ -216,7 +216,12 @@ def _build_sections(sections: tuple[tuple[str, str], ...]) -> str:
 
 
 def build_state_command(*, include_inventory: bool = False, include_streams: bool = False) -> str:
-    """One SSH call, with a separate eight-second monotone budget per group."""
+    """One SSH call, four isolated workers, eight monotone seconds per group.
+
+    A slow optional probe occupies at most one worker for its own allowance.
+    Docker stats retains time for its normal sampling delay. Each worker is a
+    timeout process-group leader, so cancellation also reaches its children.
+    """
     dashboard = dashboard_sections(include_inventory=include_inventory, include_streams=include_streams)
     fast = list(SECTIONS)
     slow = []
@@ -228,22 +233,73 @@ def build_state_command(*, include_inventory: bool = False, include_streams: boo
         return _build_sections(tuple(group)).rsplit("; ", 1)[0]
 
     def bounded(group):
-        wrapped = []
+        caps = {'docker_stats': 300, 'vm_stats': 200, 'dash_pools': 400, 'dash_streams': 300}
+        parts = ['dashboard_clock; dashboard_deadline=$((dashboard_now+800))',
+                 'dashboard_names=(); dashboard_pids=(); dashboard_status=()']
         for name, command in group:
-            wrapped.append((name, 'read dashboard_uptime rest < /proc/uptime; '
-                            'remaining=$((dashboard_deadline-${dashboard_uptime%%.*})); '
-                            '[ "$remaining" -gt 0 ] || exit 124; '
-                            'timeout "$remaining" bash -o pipefail -c ' + shlex.quote(command)))
-        return without_end(wrapped)
+            parts.append('dashboard_launch '+shlex.quote(name)+' '+str(caps.get(name, 100))+' '+shlex.quote(command))
+        parts.append('dashboard_emit')
+        return '; '.join(parts)
 
-    deadline = 'read dashboard_uptime rest < /proc/uptime; export dashboard_deadline=$((${dashboard_uptime%%.*}+8))'
+    workers = r'''
+dashboard_tmp=$(mktemp -d) || exit 1
+dashboard_pids=()
+dashboard_cleanup() {
+    for dashboard_pid in "${dashboard_pids[@]}"; do
+        [ -z "$dashboard_pid" ] || kill -TERM "$dashboard_pid" 2>/dev/null
+    done
+    wait
+    rm -rf -- "$dashboard_tmp"
+}
+trap dashboard_cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM HUP
+dashboard_clock() {
+    read dashboard_uptime rest < /proc/uptime
+    dashboard_now=$((10#${dashboard_uptime%.*}*100+10#${dashboard_uptime#*.}))
+}
+dashboard_launch() {
+    while [ "$(jobs -pr | wc -l)" -ge 4 ]; do wait -n || :; done
+    local name=$1 cap=$2 command=$3 index=${#dashboard_names[@]} remaining duration
+    dashboard_names[index]=$name
+    dashboard_clock
+    # Include the forced child-process termination grace in the group budget.
+    remaining=$((dashboard_deadline-dashboard_now-20))
+    if [ "$remaining" -le 0 ]; then
+        : > "$dashboard_tmp/$name"
+        dashboard_pids[index]=''
+        dashboard_status[index]=124
+        return
+    fi
+    [ "$remaining" -le "$cap" ] || remaining=$cap
+    printf -v duration '%d.%02d' "$((remaining/100))" "$((remaining%100))"
+    timeout --kill-after=0.2 "$duration" bash -o pipefail -c "$command" > "$dashboard_tmp/$name" 2>/dev/null &
+    dashboard_pids[index]=$!
+}
+dashboard_emit() {
+    local index name status
+    for index in "${!dashboard_names[@]}"; do
+        name=${dashboard_names[index]}
+        status=${dashboard_status[index]:-0}
+        if [ -n "${dashboard_pids[index]}" ]; then
+            wait "${dashboard_pids[index]}"
+            status=$?
+        fi
+        printf '@@@ %s\n' "$name"
+        cat -- "$dashboard_tmp/$name"
+        printf '@@@ %s status=%s\n' "$name" "$status"
+    done
+    dashboard_pids=()
+}
+'''.strip()
     # The intention marker is emitted before any costly probe, including when
     # the entire fast budget expires. Coordinator also knows the due groups.
-    parts = [without_end((dashboard[0],)), deadline, bounded(fast)]
+    parts = [without_end((dashboard[0],)), workers, bounded(fast)]
     if slow:
-        parts.extend((deadline, bounded(slow)))
+        parts.append(bounded(slow))
     parts.append("echo '@@@ end'")
-    return "; ".join(parts)
+    # SSH can start /bin/sh; the worker scheduler deliberately uses Bash jobs.
+    return 'exec bash -o pipefail -c '+shlex.quote('; '.join(parts))
 
 #: A marker is `@@@ <name>` running to the end of its line. It is deliberately
 #: NOT required to start one: `echo '@@@ next'` writes straight after whatever

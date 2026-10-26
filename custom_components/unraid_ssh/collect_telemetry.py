@@ -122,20 +122,36 @@ foreach ($carriers as $mount=>$disk) {
 }
 echo json_encode($out);
 ''')
-_SHARES = _php(r'''
+_SHARE_NAME_PHP = r'''
+function share_name($key,$share) {
+    if (isset($share["name"])) {
+        $decoded=json_decode('"'.$share["name"].'"',true);
+        return is_string($decoded) ? $decoded : $share["name"];
+    }
+    $decoded=json_decode($key,true);
+    return is_string($decoded) ? $decoded : trim($key,'"');
+}
+'''
+_SHARES = _php(_SHARE_NAME_PHP+r'''
 $shares=@parse_ini_file("/var/local/emhttp/shares.ini",true,INI_SCANNER_RAW);
 $sec=@parse_ini_file("/var/local/emhttp/sec.ini",true,INI_SCANNER_RAW);
 if ($shares === false || $sec === false) exit(1);
 $normalized=[];
-foreach ($sec as $key=>$value) $normalized[trim($key,'"')]=$value;
-$sec=$normalized;
-foreach ($shares as $key=>$share) {
-    $name=$share["name"] ?? trim($key,'"');
-    echo "[".json_encode($name)."]\n";
-    foreach (["export","security"] as $key) if (isset($sec[$name][$key])) echo $key."=".json_encode($sec[$name][$key])."\n";
+foreach ($sec as $key=>$value) {
+    $decoded=json_decode($key,true);
+    $normalized[is_string($decoded) ? $decoded : trim($key,'"')]=$value;
 }
+$sec=$normalized;
+$out=[];
+foreach ($shares as $key=>$share) {
+    $name=share_name($key,$share);
+    $info=[];
+    foreach (["export","security"] as $field) if (isset($sec[$name][$field])) $info[$field]=$sec[$name][$field];
+    $out[$name]=(object)$info;
+}
+echo json_encode((object)$out);
 ''')
-_STREAMS = _php(r'''
+_STREAMS = _php(_SHARE_NAME_PHP+r'''
 $shares=@parse_ini_file("/var/local/emhttp/shares.ini",true,INI_SCANNER_RAW);
 $disks=@parse_ini_file("/var/local/emhttp/disks.ini",true,INI_SCANNER_RAW);
 if ($shares === false || $disks === false) exit(1);
@@ -148,7 +164,7 @@ exec($command,$lines,$rc);
 if ($rc !== 0) exit(1);
 $out=[];
 foreach ($shares as $key=>$share) {
-    $name=$share["name"] ?? trim($key,'"');
+    $name=share_name($key,$share);
     $paths=[];
     foreach ($lines as $line) {
         if (!str_starts_with($line,"n")) continue;

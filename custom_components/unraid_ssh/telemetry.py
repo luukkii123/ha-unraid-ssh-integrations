@@ -175,8 +175,10 @@ def parse_dashboard_sections(sections: dict[str,str], previous: DashboardTelemet
         raw['dash_power']=current
         return tuple(rows)
     read('dash_power',power,'power_packages')
-    docker=parse.parse_flat_ini(sections.get('dash_docker','')).get('DOCKER_IMAGE_TYPE','unknown')
-    docker_mode=docker if docker in {'image','folder'} else 'unknown'
+    docker=parse.parse_flat_ini(sections.get('dash_docker','')).get('DOCKER_IMAGE_TYPE')
+    # Public Unraid raw values: empty=btrfs image, xfs=image, folder=directory.
+    # Missing and unrecognized keys remain distinct from explicitly empty.
+    docker_mode='image' if docker in {'','xfs'} else 'folder' if docker=='folder' else 'unknown'
     if 'dash_docker' not in sections: failed.add('dash_docker')
     else: failed.discard('dash_docker'); times['dash_docker']=sampled_at
     def storage(text):
@@ -211,7 +213,8 @@ def parse_dashboard_sections(sections: dict[str,str], previous: DashboardTelemet
         return tuple(result)
     read('dash_pools',pools,'pools')
     def shares(text):
-        sec=parse.parse_sectioned_ini(text); result=[]
+        sec=json.loads(text); result=[]
+        if not isinstance(sec,dict): raise ValueError('invalid share metadata')
         for share in parse.parse_shares(sections['shares']):
             info=sec.get(share.name,{})
             security=info.get('security','unknown').lower()
@@ -227,7 +230,10 @@ def parse_dashboard_sections(sections: dict[str,str], previous: DashboardTelemet
                 raise ValueError('invalid stream counts')
             raw['dash_streams']=counts; failed.discard('dash_streams')
         except (KeyError,ValueError,TypeError): counts={}; failed.add('dash_streams')
-    else: counts=previous.raw.get('dash_streams',{})
+    else:
+        counts=previous.raw.get('dash_streams',{})
+        if 'dash_streams' in previous.raw and 'dash_streams' not in previous.failed:
+            raw['dash_streams']=counts
     if values['shares'] is not None: values['shares']=tuple({**row,'streams':counts.get(row['name'])} for row in values['shares'])
     def gpu(text):
         rows=[]

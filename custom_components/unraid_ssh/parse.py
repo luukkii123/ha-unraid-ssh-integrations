@@ -192,6 +192,37 @@ def parse_disks(text: str) -> list[Disk]:
     return disks
 
 
+@dataclass(frozen=True)
+class PoolStartSlot:
+    """Internal safety inventory, including slots omitted from entity inventory."""
+
+    name: str
+    mountpoint: str
+    assigned: bool
+    status: str
+    expected_members: int | None
+
+
+def parse_pool_start_inventory(text: str) -> tuple[PoolStartSlot, ...]:
+    sections = parse_sectioned_ini(text)
+    headers = sum(line.strip().startswith('[') for line in text.splitlines())
+    if headers != len(sections) or (text.strip() and not sections):
+        raise ValueError('incomplete disk inventory')
+    slots = []
+    for name, row in sections.items():
+        if row.get('type') not in {'Cache', 'Data', 'Parity', 'Flash'}:
+            raise ValueError('unknown disk type')
+        if row['type'] != 'Cache':
+            continue
+        expected = row.get('devices', '')
+        slots.append(PoolStartSlot(
+            name=row.get('name') or name, mountpoint=row.get('fsMountpoint', ''),
+            assigned=bool(row.get('device')), status=row.get('status', ''),
+            expected_members=int(expected) if expected.isdecimal() else None,
+        ))
+    return tuple(slots)
+
+
 # --- shares.ini -----------------------------------------------------------------
 
 
@@ -203,9 +234,32 @@ class Share:
 
 
 def parse_shares(text: str) -> list[Share]:
+    def name_value(raw: str) -> str:
+        # PHP's quoted INI values escape embedded quotes/backslashes. Decode
+        # that syntax only for share names, preserving the disk/ID parser.
+        try:
+            return json.loads('"'+raw+'"')
+        except ValueError:
+            return raw
+    # Keep richer share-name quoting local: disk names and their entity IDs
+    # continue to use the unchanged disk INI parser.
+    sections: dict[str, dict[str, str]] = {}
+    current = None
+    for line in text.splitlines():
+        stripped = line.strip()
+        section = re.fullmatch(r'\[(.*)\]', stripped)
+        if section:
+            raw = section[1]
+            if raw.startswith('"') and raw.endswith('"'):
+                raw = raw[1:-1]
+            current = sections.setdefault(name_value(raw), {})
+        elif current is not None:
+            match = _KV_RE.match(stripped)
+            if match:
+                current[match[1]] = match[2]
     return [
-        Share(name=sec.get("name") or name, used_kib=_int(sec.get("used")), free_kib=_int(sec.get("free")))
-        for name, sec in parse_sectioned_ini(text).items()
+        Share(name=name_value(sec.get("name") or name), used_kib=_int(sec.get("used")), free_kib=_int(sec.get("free")))
+        for name, sec in sections.items()
     ]
 
 

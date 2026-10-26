@@ -134,7 +134,7 @@ async def test_array_start_refreshes_pool_inventory_before_guard(hass,monkeypatc
             return CommandResult(0,'','')
         fast.client.run=run
         await button(hass,entry,'array_start').async_press()
-        assert 'dash_pools status=' in commands[0]
+        assert 'dashboard_launch dash_pools ' in commands[0]
         assert commands[1]=="/usr/local/emhttp/plugins/dynamix/scripts/emcmd 'startState=STOPPED&cmdStart=Start'"
     finally:
         await hass.config_entries.async_unload(entry.entry_id)

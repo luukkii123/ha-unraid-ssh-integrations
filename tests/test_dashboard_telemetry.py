@@ -14,7 +14,7 @@ def sample(**updates):
                 'dash_mounts':'1 0 1:1 / /boot rw - vfat /dev/fake rw\n',
                 'dash_hardware':json.dumps({'board_name':'Imaginary Board','serial':'SECRET'}),
                 'dash_smart':json.dumps({'disk1':{'text':'SMART overall-health self-assessment test result: PASSED','mtime':123,'stale':True}}),
-                'dash_pools':'[]', 'dash_shares':'["Example"]\nsecurity="private"\nexport="yes"',
+                'dash_pools':'[]', 'dash_shares':'{"Example":{"security":"private","export":"yes"}}',
                 'shares':'["Example"]\nname="Example"', 'dash_streams':'{"Example":0}', 'dash_gpu':'0, 99.1',
                 'var':'regTy="Basic"', 'disks':'', 'vms':'', 'vm_stats':''}
     sections.update(updates)
@@ -86,8 +86,8 @@ def test_dashboard_command_groups_and_fixed_sources():
     fast=build_state_command()
     slow=build_state_command(include_inventory=True, include_streams=True)
     assert 'dash_cpu' in fast
-    assert 'dash_hardware status=' not in fast
-    assert 'dash_hardware status=' in slow
+    assert 'dashboard_launch dash_hardware ' not in fast
+    assert 'dashboard_launch dash_hardware ' in slow
     assert '--interface --block' in fast
     assert 'smartctl' not in slow
     assert 'optionCorrect' not in slow
@@ -106,11 +106,11 @@ def test_counter_reset_and_device_hotplug_never_publish_negative_or_zero():
     assert telemetry._device_rate(row,{'net.0.name':'vnet0','net.0.rx.bytes':1},'net','rx.bytes',1) is None
 
 
-@pytest.mark.parametrize('mode,want',[('image',('docker_vdisk',)),('folder',()),('unexpected',())])
+@pytest.mark.parametrize('mode,want',[('',('docker_vdisk',)),('xfs',('docker_vdisk',)),('folder',()),('unexpected',())])
 def test_docker_capacity_requires_image_mode_and_actual_mount(mode,want):
     data=telemetry.parse_dashboard_sections(sample(dash_docker=f'DOCKER_IMAGE_TYPE="{mode}"',dash_mounts='1 0 1:1 / /var/lib/docker rw - btrfs /dev/loop0 rw'),None,sampled_at=1)
     assert tuple(row['kind'] for row in data.storage)==want
-    assert data.docker_mode==(mode if mode in {'image','folder'} else 'unknown')
+    assert data.docker_mode==('image' if mode in {'','xfs'} else mode if mode=='folder' else 'unknown')
 
 
 def test_rapl_unknown_when_multiple_wraps_possible_or_no_power_bound():

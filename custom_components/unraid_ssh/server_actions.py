@@ -33,6 +33,40 @@ _PARAMS = {
 }
 
 
+def _pool_start_safe(snapshot: Snapshot) -> bool:
+    """Require coverage of every configured slot, never just returned pool rows."""
+    slots = snapshot.pool_start_inventory
+    if slots is None:
+        return False
+    if not slots:
+        return not any(d.kind.lower() == 'cache' for d in snapshot.disks)
+    telemetry = snapshot.telemetry
+    if (not telemetry.pools or 'dash_pools' in telemetry.failed
+            or telemetry.sample_times.get('dash_pools') != snapshot.sampled_at):
+        return False
+    groups = {}
+    for slot in slots:
+        if not slot.assigned or slot.status != 'DISK_OK' or not slot.mountpoint:
+            return False
+        groups.setdefault(slot.mountpoint, []).append(slot)
+    covered = set()
+    for group in groups.values():
+        names = {slot.name for slot in group}
+        matches = [p for p in telemetry.pools if p.get('name') in names]
+        if len(matches) != 1:
+            return False
+        pool = matches[0]
+        members = pool.get('members')
+        if (pool.get('name') in covered or pool.get('state') not in {'online', 'unmounted', 'warning'}
+                or not isinstance(members, (list, tuple)) or not names.issubset(members)):
+            return False
+        expected = [s.expected_members for s in group if s.expected_members is not None]
+        if not expected or min(expected) < 1 or len(set(members)) < max(expected):
+            return False
+        covered.add(pool['name'])
+    return len(covered) == len(telemetry.pools)
+
+
 def server_action_command(action: ServerAction, snapshot: Snapshot) -> str:
     """Never interpolate external strings into a server command."""
     if not isinstance(action,ServerAction):
@@ -47,9 +81,7 @@ def server_action_command(action: ServerAction, snapshot: Snapshot) -> str:
                 or array.start_mode!='normal' or array.missing_disks!=0 or array.parity_state!='idle'
                 or 'disks' in snapshot.failed or any(d.status in {'missing','not_present','invalid','disabled','new','unknown'} for d in snapshot.disks)):
             raise ServerActionError('array_start_blocked')
-        cache=any(d.kind.lower()=='cache' for d in snapshot.disks)
-        pools=snapshot.telemetry.pools
-        if cache and (not pools or any(p.get('state') not in {'online','unmounted','warning'} or not p.get('members') for p in pools)):
+        if not _pool_start_safe(snapshot):
             raise ServerActionError('array_start_blocked')
     else:
         if array.md_state!='started' or array.fs_state!='started':

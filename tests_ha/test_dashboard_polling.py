@@ -20,8 +20,8 @@ async def test_dashboard_deadlines_are_independent_and_keep_outer_budget(hass,mo
         snapshot=await coordinator._async_update_data()
         coordinator.async_set_updated_data(snapshot)
         command=client.run.call_args.args[0]
-        assert ('dash_hardware status=' in command) is inventory
-        assert ('dash_streams status=' in command) is streams
+        assert ('dashboard_launch dash_hardware ' in command) is inventory
+        assert ('dashboard_launch dash_streams ' in command) is streams
         assert client.run.call_args.kwargs['timeout']==POLL_TIMEOUT==20
     await coordinator.async_shutdown()
 

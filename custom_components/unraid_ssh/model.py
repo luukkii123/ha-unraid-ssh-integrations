@@ -241,6 +241,7 @@ class Snapshot:
     sampled_at: float | None = None
     stack_services: dict[str, parse.StackServices] = field(default_factory=dict)
     telemetry: DashboardTelemetry = field(default_factory=DashboardTelemetry)
+    pool_start_inventory: tuple[parse.PoolStartSlot, ...] | None = field(default=None, repr=False)
 
 
 def _section(sections: dict[str, str], name: str, fn: Callable[[str], Any], failed: set[str], default: Any) -> Any:
@@ -305,6 +306,14 @@ def build_snapshot(sections: dict[str, str], previous: Snapshot | None, *, sampl
             pass
     stacks, loose = merge_stacks(stack_dirs, projects, containers, stack_services)
     prev_cpu = previous.cpu_times if previous else None
+    # A separate, conservative safety projection must not change disk entities
+    # or the existing disk parser's success/failure semantics.
+    pool_start_inventory = None
+    if 'disks' in sections:
+        try:
+            pool_start_inventory = parse.parse_pool_start_inventory(sections['disks'])
+        except ValueError:
+            pass
     return Snapshot(
         array=array,
         disks=disks,
@@ -325,6 +334,7 @@ def build_snapshot(sections: dict[str, str], previous: Snapshot | None, *, sampl
         container_resources={c.name: replace(docker_stats[c.name], ram_limit=docker_limits.get(c.name)) for c in containers if c.state == "running" and c.name in docker_stats},
         vm_resources=resources, sampled_at=sampled_at, stack_services=stack_services,
         telemetry=parse_dashboard_sections(sections, previous.telemetry if previous else None, sampled_at=sampled_at),
+        pool_start_inventory=pool_start_inventory,
     )
 
 

@@ -11,13 +11,15 @@ import pytest
 from unraid_ssh import collect, parse
 
 
-def test_state_command_contains_every_section_in_order():
+def test_state_command_contains_every_section_in_order(monkeypatch):
     cmd = collect.build_state_command()
     names = [name for name, _ in collect.SECTIONS]
     assert names == ["var", "disks", "shares", "stat", "mem", "load", "gpu", "sensors", "docker", "docker_stats", "docker_limits", "vm_stats", "icons", "compose", "stacks", "stack_files", "vms"]
-    positions = [cmd.index(f"echo '@@@ {name}'") for name in names]
-    assert positions == sorted(positions)
-    assert cmd.rstrip().endswith("echo '@@@ end'")
+    monkeypatch.setattr(collect, 'SECTIONS', tuple((name, 'printf '+name) for name in names))
+    monkeypatch.setattr(collect, 'dashboard_sections', lambda **kwargs: (('dash_requested', 'printf marker'),))
+    result = subprocess.run(['bash', '-c', collect.build_state_command()], capture_output=True, text=True, check=True)
+    assert list(collect.split_output(result.stdout)) == ['dash_requested', *names]
+    assert result.stdout.rstrip().endswith('@@@ end')
     assert "set -e" not in cmd                    # one failing section must not kill the rest
 
 
