@@ -235,3 +235,31 @@ eigene Browseroberfläche; Config-/Optionsformulare bleiben unverändert.
 Alle neuen Fixtures sind erfunden, alle Aktionsprüfungen verwenden Attrappen.
 Keine Hardware-/Serveraktion und keine reale Laufzeitfähigkeit wird aus
 diesen Tests abgeleitet; echte Installationsbelege bleiben außerhalb GitHub.
+
+## Inventarvertrag 0.10.0
+
+Vier unabhängig fällige Quellen ergänzen den Snapshot: Benutzerrechte (300 s),
+USB-Sysfs, aktive VM-USB-Zuordnungen (60 s) und Coral-Sysfs. Der eigene
+2-s-Inventarblock folgt den vorhandenen 8+8-s-Blöcken innerhalb des 20-s-Polls;
+maximal vier Worker und die verwaltete Kindprozessbereinigung bleiben erhalten.
+Ausgelassene Proben behalten den letzten Erfolg, fällige Fehler machen die
+Quelle unbekannt. Ein späterer Skip darf keinen alten Erfolg wiederbeleben.
+
+Die drei Dashboardsensoren verwenden numerische Anzahlen und unrecorded
+Listenmetadaten. SMB-Zähler sind deduplizierte Berechtigungsmengen; aktive
+Libvirt-Zuordnungen umfassen auch pausierte Domains, niemals nur konfigurierte
+inaktive Domains. Unsichere Portcache-Ziele bleiben unbekannt. Coral verwendet
+belegte Kernelattribute und stabile PCI-/Classidentitäten; USB-Anwesenheit
+liefert keine Betriebsbereitschaft. Keine Hardwareaktion gehört zum Inventar.
+
+Validierung ausschließlich mit erfundenen Quellen und isolierten Prozessen:
+vor der abschließenden Paused-Korrektur je 388 reine und 202 HA-Tests für
+2026.7.0/2026.9.2, ohne Skips; Config-Flow-Zweigabdeckung 100 %. Die Änderung
+am Active-Listing ist durch einen echten PHP-Reader mit Fake-virsh rot/grün
+belegt, einschließlich laufender, pausierter und ausgeschalteter Domain;
+abschließend 18 USB-Tests bestanden. Recorderprüfungen lesen echte SQL-Daten:
+Listen bleiben draußen, numerische Coraltemperaturen behalten ihre Historie.
+Der kombinierte synthetische Hängefall endet innerhalb des Pollbudgets und
+hinterlässt keine Worker-Kindprozesse. CI baut die PHP-DOM-Abhängigkeit über
+den eingecheckten Test-Dockerfile. Diese Nachweise enthalten keine Daten einer
+realen Installation.
