@@ -68,6 +68,7 @@ class UnraidRuntime:
     #: Deliberately not in the registry: a restart costs one grace period, and
     #: a persisted clock would have to be migrated and cleaned up forever.
     stale_since: dict[str, datetime] = field(default_factory=dict)
+    server_action_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 
 def setting(entry: ConfigEntry, key: str, default: Any) -> Any:

@@ -333,6 +333,36 @@
       },
       "check_updates": {
         "name": "Check for updates"
+      },
+      "server_reboot": {
+        "name": "Reboot server"
+      },
+      "server_shutdown": {
+        "name": "Shut down server"
+      },
+      "array_start": {
+        "name": "Start array"
+      },
+      "array_stop": {
+        "name": "Stop array"
+      },
+      "parity_start": {
+        "name": "Check parity (without correction)"
+      },
+      "parity_pause": {
+        "name": "Pause parity check"
+      },
+      "parity_resume": {
+        "name": "Resume parity check"
+      },
+      "parity_cancel": {
+        "name": "Cancel parity check"
+      },
+      "spindown_all": {
+        "name": "Spin down all disks"
+      },
+      "mover_start": {
+        "name": "Start mover"
       }
     },
     "switch": {
@@ -356,6 +386,53 @@
       "container_update": {
         "name": "{container} update"
       }
+    }
+  },
+  "exceptions": {
+    "server_action_busy": {
+      "message": "A server action is already running. Wait and check the server state."
+    },
+    "server_update_active": {
+      "message": "Container updates are active. Wait for the update queue to finish."
+    },
+    "server_poll_failed": {
+      "message": "Current server state could not be checked. Check the Unraid connection."
+    },
+    "server_action_uncertain": {
+      "message": "Request status is uncertain. Check the connection and server state before trying again."
+    },
+    "server_action_failed": {
+      "message": "Unraid rejected the request. Check the server state."
+    },
+    "invalid_action": {
+      "message": "Unknown server action."
+    },
+    "unknown_state": {
+      "message": "Server or parity state is unknown or a recovery operation is active. Check Unraid."
+    },
+    "array_start_blocked": {
+      "message": "Normal array start is not confirmed safe. Check configuration, disks and pools in Unraid."
+    },
+    "array_not_started": {
+      "message": "The array is not in its normal started state."
+    },
+    "parity_not_running": {
+      "message": "No normal parity check is running."
+    },
+    "parity_not_paused": {
+      "message": "No normal parity check is paused."
+    },
+    "parity_not_active": {
+      "message": "No normal parity check is active."
+    },
+    "sync_active": {
+      "message": "A parity or synchronization operation is active. Wait for it to finish."
+    },
+    "parity_missing": {
+      "message": "Available parity disks could not be confirmed."
+    },
+    "mover_active": {
+      "message": "Mover is active or its state is unknown. Check Unraid."
     }
   }
 }

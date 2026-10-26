@@ -115,6 +115,10 @@ class UpdateQueue:
     async def enqueue(self, containers) -> None:
         """Validate all targets, save the complete batch, then start the worker."""
         async with self._lock:
+            runtime = getattr(self.entry, "runtime_data", None)
+            server_lock = getattr(runtime, "server_action_lock", None)
+            if server_lock is not None and server_lock.locked():
+                raise actions.ActionError("Serveraktion läuft. Update später erneut starten.")
             accepted = []
             snapshot = self.fast.data
             running_batch = any(j["state"] in ACTIVE for j in self.jobs)

@@ -12,6 +12,8 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import actions
+from .server_actions import ServerAction, ServerActionError, server_action_command
+from .ssh import SSHError
 from .const import CONTAINER_ACTION_TIMEOUT, STACK_ACTION_TIMEOUT, VM_ACTION_TIMEOUT
 from .coordinator import UnraidConfigEntry, UnraidCoordinator
 from .entity import (
@@ -158,7 +160,46 @@ class VmForceStopButton(VmMetadataMixin, UnraidEntity, ButtonEntity):
         finally:
             await self.coordinator.async_request_refresh()
 
+class ServerActionButton(UnraidEntity, ButtonEntity):
+    """Reject concurrent requests; validate a fresh snapshot under the lock."""
+    def __init__(self, coordinator, action):
+        self._action=action
+        super().__init__(coordinator, ButtonEntityDescription(key=action.value),
+                         server_device(coordinator),action.value)
+
+    @staticmethod
+    def _error(key):
+        return HomeAssistantError(translation_domain="unraid_ssh", translation_key=key)
+
+    async def async_press(self):
+        runtime=self.coordinator.entry.runtime_data
+        lock=runtime.server_action_lock
+        if lock.locked(): raise self._error("server_action_busy")
+        # acquire() does not suspend for an unlocked asyncio.Lock. Admission is
+        # reserved before the fresh poll awaits, so queue admission sees it.
+        async with lock:
+            if runtime.queue and runtime.queue.summary()["active"]:
+                raise self._error("server_update_active")
+            await self.coordinator.async_refresh()
+            if not self.coordinator.last_update_success or self.snapshot is None:
+                raise self._error("server_poll_failed")
+            try:
+                command=server_action_command(self._action,self.snapshot)
+            except ServerActionError as err:
+                raise self._error(str(err)) from err
+            try:
+                result=await runtime.client.run(command,timeout=30)
+            except (SSHError,TimeoutError) as err:
+                # Sending a reboot then losing SSH is uncertain, not success.
+                # In particular there is no automatic command retry.
+                raise self._error("server_action_uncertain") from err
+            if result.exit_status!=0:
+                raise self._error("server_action_failed")
+
+
 def _plan(coordinator: UnraidCoordinator, snapshot: Snapshot) -> Iterator[tuple[str, Callable[[], ButtonEntity] | None]]:
+    for action in ServerAction:
+        yield action.value, partial(ServerActionButton,coordinator,action)
     for vm in snapshot.vms:
         key = f"restart_vm_{vm.name}"
         yield key, partial(VmRestartButton, coordinator, VM_RESTART, vm_device(coordinator, vm), key, vm.name, find_vm)

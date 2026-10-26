@@ -333,6 +333,36 @@
       },
       "check_updates": {
         "name": "Updates jetzt prüfen"
+      },
+      "server_reboot": {
+        "name": "Server neu starten"
+      },
+      "server_shutdown": {
+        "name": "Server herunterfahren"
+      },
+      "array_start": {
+        "name": "Array starten"
+      },
+      "array_stop": {
+        "name": "Array stoppen"
+      },
+      "parity_start": {
+        "name": "Parität prüfen (ohne Korrektur)"
+      },
+      "parity_pause": {
+        "name": "Paritätsprüfung pausieren"
+      },
+      "parity_resume": {
+        "name": "Paritätsprüfung fortsetzen"
+      },
+      "parity_cancel": {
+        "name": "Paritätsprüfung abbrechen"
+      },
+      "spindown_all": {
+        "name": "Alle Festplatten in Standby"
+      },
+      "mover_start": {
+        "name": "Mover starten"
       }
     },
     "switch": {
@@ -356,6 +386,53 @@
       "container_update": {
         "name": "{container} Update"
       }
+    }
+  },
+  "exceptions": {
+    "server_action_busy": {
+      "message": "Eine Serveraktion läuft bereits. Warten und Serverzustand prüfen."
+    },
+    "server_update_active": {
+      "message": "Containerupdates laufen. Ende der Updatewarteschlange abwarten."
+    },
+    "server_poll_failed": {
+      "message": "Aktueller Serverzustand konnte nicht geprüft werden. Unraid-Verbindung prüfen."
+    },
+    "server_action_uncertain": {
+      "message": "Anfragestatus ist unklar. Verbindung und Serverzustand vor einer erneuten Anfrage prüfen."
+    },
+    "server_action_failed": {
+      "message": "Unraid hat die Anfrage abgelehnt. Serverzustand prüfen."
+    },
+    "invalid_action": {
+      "message": "Unbekannte Serveraktion."
+    },
+    "unknown_state": {
+      "message": "Server- oder Paritätszustand ist unbekannt oder eine Wiederherstellung läuft. Unraid prüfen."
+    },
+    "array_start_blocked": {
+      "message": "Normaler Arraystart ist nicht sicher bestätigt. Konfiguration, Festplatten und Pools in Unraid prüfen."
+    },
+    "array_not_started": {
+      "message": "Das Array ist nicht normal gestartet."
+    },
+    "parity_not_running": {
+      "message": "Es läuft keine normale Paritätsprüfung."
+    },
+    "parity_not_paused": {
+      "message": "Es ist keine normale Paritätsprüfung pausiert."
+    },
+    "parity_not_active": {
+      "message": "Es ist keine normale Paritätsprüfung aktiv."
+    },
+    "sync_active": {
+      "message": "Eine Paritäts- oder Synchronisationsaktion ist aktiv. Ende der Aktion abwarten."
+    },
+    "parity_missing": {
+      "message": "Verfügbare Paritätsplatten konnten nicht bestätigt werden."
+    },
+    "mover_active": {
+      "message": "Mover ist aktiv oder sein Zustand ist unbekannt. Unraid prüfen."
     }
   }
 }

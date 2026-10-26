@@ -43,6 +43,12 @@ class UnraidBinarySensor(UnraidEntity, BinarySensorEntity):
     entity_description: UnraidBinaryDescription
 
     @property
+    def extra_state_attributes(self):
+        if self.entity_description.key == "parity_running":
+            return {"state": self.snapshot.array.parity_state if self.snapshot and self.snapshot.array else "unknown"}
+        return None
+
+    @property
     def is_on(self) -> bool | None:
         item = self.item
         return None if item is None else self.entity_description.is_on_fn(item)

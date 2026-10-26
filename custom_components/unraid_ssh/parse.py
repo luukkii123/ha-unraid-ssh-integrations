@@ -67,6 +67,16 @@ class ArrayInfo:
     parity_progress: float | None
     parity_errors: int
     mover_active: bool
+    config_valid: bool | None = None
+    fs_state: str = "unknown"
+    start_mode: str = "unknown"
+    missing_disks: int | None = None
+    resync_action: str = "unknown"
+    resync: int | None = None
+    resync_pos: int | None = None
+    resync_correct: int | None = None
+    parity_state: str = "unknown"
+    mover_known: bool = False
 
 
 def parse_var(text: str) -> ArrayInfo:
@@ -76,6 +86,17 @@ def parse_var(text: str) -> ArrayInfo:
     pos = _int(var.get("mdResyncPos"))
     running = resync > 0
     progress = round(pos / resync * 100, 1) if running else None
+    action = var.get("mdResyncAction", "unknown").lower()
+    def unsigned(key):
+        value = var.get(key, "")
+        return int(value) if value.isdecimal() else None
+    limit, position, correct = (unsigned(key) for key in ("mdResync", "mdResyncPos", "mdResyncCorr"))
+    if action in {"recon", "clear", "rebuild", "sync"}:
+        parity_state = "other"
+    elif action != "check" or limit is None or position is None or correct not in {0,1}:
+        parity_state = "unknown"
+    else:
+        parity_state = "running" if limit > 0 else "paused" if position > 0 else "idle"
     return ArrayInfo(
         name=var.get("NAME") or "Unraid",
         version=var.get("version") or "",
@@ -85,6 +106,13 @@ def parse_var(text: str) -> ArrayInfo:
         parity_progress=progress,
         parity_errors=_int(var.get("sbSyncErrs")),
         mover_active=_yes(var.get("shareMoverActive")),
+        config_valid=_yes(var["configValid"]) if var.get("configValid") in {"yes","no"} else None,
+        fs_state=var.get("fsState", "unknown").lower(),
+        start_mode=var.get("startMode", "unknown").lower(),
+        missing_disks=unsigned("mdNumMissing"),
+        resync_action=action, resync=limit, resync_pos=position,
+        resync_correct=correct, parity_state=parity_state,
+        mover_known=var.get("shareMoverActive") in {"yes","no"},
     )
 
 
