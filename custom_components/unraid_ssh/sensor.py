@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from datetime import timedelta
 from functools import partial
 from typing import Any, Final
@@ -397,6 +397,66 @@ class DashboardSensor(UnraidEntity, SensorEntity):
                 **{_PUBLIC_KEYS.get(key,key):getattr(data,key) for key in self._fields}}
 
 
+
+class InventorySensor(UnraidEntity, SensorEntity):
+    """Numeric counts with current inventories excluded from Recorder."""
+    _unrecorded_attributes = frozenset({'users', 'devices', 'sampled_at', 'failed_sections',
+                                      'smb_enabled', 'unprotected_count', 'mapping_status'})
+
+    def __init__(self, coordinator, kind):
+        self._kind = kind
+        super().__init__(coordinator, SensorEntityDescription(key='dashboard_' + kind),
+                         server_device(coordinator), 'dashboard_' + kind)
+
+    @property
+    def native_value(self):
+        rows = getattr(self.snapshot.inventory, self._kind) if self.snapshot else None
+        return len(rows) if rows is not None else None
+
+    @property
+    def available(self):
+        return super().available and self.native_value is not None
+
+    @property
+    def extra_state_attributes(self):
+        if self.snapshot is None: return None
+        data = self.snapshot.inventory
+        sources = {'inv_' + self._kind}
+        if self._kind == 'usb': sources.add('inv_usb_mapping')
+        if self._kind == 'coral': sources.add('inv_usb')
+        rows = getattr(data, self._kind)
+        attrs = {'schema_version': 1,
+                 'sampled_at': {key: value for key, value in data.sample_times.items() if key in sources},
+                 'failed_sections': sorted(sources & data.failed),
+                 'users' if self._kind == 'users' else 'devices': tuple(asdict(row) for row in rows) if rows is not None else None}
+        if self._kind == 'users':
+            attrs.update(smb_enabled=data.smb_enabled,
+                         unprotected_count=sum(not row.protected for row in rows) if rows is not None else None)
+        if self._kind == 'usb': attrs['mapping_status'] = data.mapping_status
+        return attrs
+
+
+def _coral_device(snapshot, identifier):
+    return next((row for row in snapshot.inventory.coral or () if row.id == identifier), None)
+
+
+def _plan_inventory(coordinator, snapshot, server):
+    for kind in ('users', 'usb', 'coral'):
+        yield 'dashboard_' + kind, partial(InventorySensor, coordinator, kind)
+    ids = set(snapshot.inventory.known_coral_ids) | {row.id for row in snapshot.inventory.coral or () if row.transport == 'pci'}
+    for identifier in sorted(ids):
+        row = _coral_device(snapshot, identifier)
+        for role in ('temp', 'status'):
+            key = 'coral_' + role + '_' + identifier.encode('utf-8').hex()
+            desc = UnraidSensorDescription(key='coral_' + role,
+                device_class=SensorDeviceClass.TEMPERATURE if role == 'temp' else SensorDeviceClass.ENUM,
+                native_unit_of_measurement=UnitOfTemperature.CELSIUS if role == 'temp' else None,
+                state_class=SensorStateClass.MEASUREMENT if role == 'temp' else None,
+                options=None if role == 'temp' else ['ready', 'error', 'unknown'],
+                value_fn=lambda row, field='temperature_c' if role == 'temp' else 'state': getattr(row, field))
+            yield key, partial(DashboardNumber, coordinator, desc, server, key, identifier, _coral_device,
+                               {'coral': row.name if row else identifier})
+
 def _power(snapshot):
     packages=snapshot.telemetry.power_packages
     if not packages or any(row['power_w'] is None for row in packages): return None
@@ -472,6 +532,7 @@ def _plan(coordinator: UnraidCoordinator, snapshot: Snapshot) -> Iterator[Planne
     """
     server = server_device(coordinator)
     yield from _plan_dashboard(coordinator,snapshot,server)
+    yield from _plan_inventory(coordinator,snapshot,server)
     yield "update_queue", partial(UpdateQueueSensor, coordinator, SensorEntityDescription(key="update_queue"), server, "update_queue")
     for desc in SERVER:
         yield desc.key, partial(UnraidSensor, coordinator, desc, server, desc.key)

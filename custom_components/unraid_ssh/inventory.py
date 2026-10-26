@@ -4,7 +4,6 @@ from dataclasses import dataclass, field
 import json
 import math
 import re
-from dataclasses import replace
 
 
 @dataclass(frozen=True)
@@ -110,7 +109,14 @@ def _usb(text, mapping):
     rows = json.loads(text)
     if not isinstance(rows, list): raise ValueError('invalid USB inventory')
     result = []
-    valid = [row for row in rows if isinstance(row, dict) and re.fullmatch(r'(?:usb[0-9]+|[0-9]+-[0-9]+(?:\.[0-9]+)*)', str(row.get('port', '')))]
+    valid = []
+    for row in rows:
+        if not isinstance(row, dict) or not isinstance(row.get('port'), str):
+            raise ValueError('invalid USB row')
+        if ':' in row['port']: continue  # USB interface, not a device
+        if not re.fullmatch(r'(?:usb[0-9]+|[0-9]+-[0-9]+(?:\.[0-9]+)*)', row['port']):
+            raise ValueError('invalid USB port')
+        valid.append(row)
     for row in valid:
         port = row['port']
         vid, pid = str(row['idVendor']).lower(), str(row['idProduct']).lower()
@@ -143,12 +149,13 @@ def _coral(text):
     if not isinstance(rows, list): raise ValueError('invalid Coral inventory')
     result = []
     for row in rows:
+        classpath = row['path']
+        if not re.fullmatch(r'/sys/class/apex/apex_[0-9]+', classpath): raise ValueError('invalid class identity')
         address = row.get('pci_address', '')
         if re.fullmatch(r'[0-9a-fA-F]{4}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}\.[0-7]', address):
-            identifier = address.lower(); source = 'pci_address'
+            identifier = address.lower(); source = classpath + '/pci_address'
         else:
-            identifier = row['path']; source = 'sysfs_class'
-            if not re.fullmatch(r'/sys/class/apex/apex_[0-9]+', identifier): raise ValueError('invalid class identity')
+            identifier = classpath; source = classpath
         raw = row.get('status')
         state = 'ready' if raw == 'ALIVE' else 'error' if raw in {'DEAD', 'LAMED', 'DRIVER_EXITING'} else 'unknown'
         temperature = _number(row.get('temp'))
@@ -185,6 +192,17 @@ def parse_inventory_sections(sections: dict[str, str], previous: DashboardInvent
         value = json.loads(text)
         if not isinstance(value, dict) or not isinstance(value.get('active'), list) or type(value.get('supported')) is not bool:
             raise ValueError('invalid USB mapping')
+        for row in value['active']:
+            if not isinstance(row, dict) or not isinstance(row.get('vm'), str) or not row['vm']:
+                raise ValueError('invalid active VM name')
+            for key in ('bus', 'dev'):
+                if key in row and (not isinstance(row[key], str) or not re.fullmatch(r'[0-9]+', row[key])):
+                    raise ValueError('invalid USB address')
+            for key in ('vendor', 'product'):
+                if key in row and (not isinstance(row[key], str) or not re.fullmatch(r'(?:0x)?[0-9a-fA-F]{4}', row[key])):
+                    raise ValueError('invalid USB pair')
+            if not ({'bus', 'dev'} <= row.keys() or {'vendor', 'product'} <= row.keys()):
+                raise ValueError('missing USB assignment identity')
         # Positive projection also protects retained internal state from caches.
         return {'supported': value['supported'], 'active': [{k: row[k] for k in ('vm', 'bus', 'dev', 'vendor', 'product') if k in row} for row in value['active']]}
     mapping = read('inv_usb_mapping', mapping_parser, previous.mapping)

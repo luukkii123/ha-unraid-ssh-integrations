@@ -11,6 +11,7 @@ import re
 import shlex
 
 from .collect_telemetry import dashboard_sections
+from .collect_inventory import inventory_sections
 
 from .const import (
     COMPOSE_PROJECTS_DIR,
@@ -217,7 +218,9 @@ def _build_sections(sections: tuple[tuple[str, str], ...]) -> str:
     return "; ".join(parts)
 
 
-def build_state_command(*, include_inventory: bool = False, include_streams: bool = False) -> str:
+def build_state_command(*, include_inventory: bool = False, include_streams: bool = False,
+                        include_devices: bool = False, include_users: bool = False,
+                        include_usb_mapping: bool = False) -> str:
     """One SSH call, four isolated workers, eight monotone seconds per group.
 
     A slow optional probe occupies at most one worker for its own allowance.
@@ -234,9 +237,9 @@ def build_state_command(*, include_inventory: bool = False, include_streams: boo
     def without_end(group):
         return _build_sections(tuple(group)).rsplit("; ", 1)[0]
 
-    def bounded(group):
-        caps = {'docker_stats': 300, 'vm_stats': 200, 'dash_pools': 400, 'dash_streams': 300}
-        parts = ['dashboard_clock; dashboard_deadline=$((dashboard_now+800))',
+    def bounded(group, budget=800):
+        caps = {'docker_stats': 300, 'vm_stats': 200, 'dash_pools': 400, 'dash_streams': 300, 'inv_users': 50, 'inv_usb': 50, 'inv_coral': 50, 'inv_usb_mapping': 150}
+        parts = [f'dashboard_clock; dashboard_deadline=$((dashboard_now+{budget}))',
                  'dashboard_names=(); dashboard_pids=(); dashboard_status=()']
         for name, command in group:
             parts.append('dashboard_launch '+shlex.quote(name)+' '+str(caps.get(name, 100))+' '+shlex.quote(command))
@@ -301,6 +304,14 @@ dashboard_emit() {
     parts = [without_end((dashboard[0],)), workers, bounded(fast)]
     if slow:
         parts.append(bounded(slow))
+    if include_devices:
+        # Dedicated allowance: never displace any 0.9 source from its 8+8s
+        # groups. 16+2s plus forced-kill grace remains inside POLL_TIMEOUT=20.
+        inventory = tuple((name, command) for name, command in inventory_sections()
+                          if name not in {'inv_users', 'inv_usb_mapping'}
+                          or name == 'inv_users' and include_users
+                          or name == 'inv_usb_mapping' and include_usb_mapping)
+        parts.append(bounded(inventory, 200))
     parts.append("echo '@@@ end'")
     # SSH can start /bin/sh; the worker scheduler deliberately uses Bash jobs.
     return 'exec bash -o pipefail -c '+shlex.quote('; '.join(parts))

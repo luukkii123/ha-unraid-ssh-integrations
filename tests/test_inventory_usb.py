@@ -116,3 +116,21 @@ exit 9
     assert row['active']==[dict(vm='VM $(touch SHOULD_NOT_EXIST)',vendor='1234',product='abcd',bus='1',dev='4')]
     assert not (tmp_path/'SHOULD_NOT_EXIST').exists()
     assert 'PRIVATE' not in output and '<domain>' not in output
+
+
+@pytest.mark.parametrize('bad',[{'vm':'VM','vendor':None,'product':'abcd'},{'vm':None,'bus':'1','dev':'4'},{'vm':'VM','bus':{},'dev':'4'}])
+def test_invalid_optional_mapping_is_partial_but_usb_survives(bad):
+    result=parse([device()],mapping(bad))
+    assert result.usb is not None and len(result.usb)==1
+    assert result.mapping_status=='partial' and 'inv_usb_mapping' in result.failed
+
+
+def test_stopped_vm_configuration_has_no_active_assignment():
+    result=parse([device()],dict(supported=True,active=[],configured=[dict(vm='Stopped VM',bus='1',dev='4')]))
+    assert result.usb[0].state=='host' and result.usb[0].assigned_vm is None
+
+
+@pytest.mark.parametrize('rows',[[1],[{}],[dict(port='not-a-sysfs-port')]])
+def test_malformed_usb_source_is_unavailable_not_zero(rows):
+    result=parse(rows,mapping())
+    assert result.usb is None and 'inv_usb' in result.failed

@@ -293,6 +293,26 @@
           "failed": "Failed",
           "unknown": "Unknown"
         }
+      },
+      "dashboard_users": {
+        "name": "User inventory"
+      },
+      "dashboard_usb": {
+        "name": "USB inventory"
+      },
+      "dashboard_coral": {
+        "name": "Coral inventory"
+      },
+      "coral_temp": {
+        "name": "{coral} temperature"
+      },
+      "coral_status": {
+        "name": "{coral} status",
+        "state": {
+          "ready": "Ready",
+          "error": "Error",
+          "unknown": "Unknown"
+        }
       }
     },
     "binary_sensor": {

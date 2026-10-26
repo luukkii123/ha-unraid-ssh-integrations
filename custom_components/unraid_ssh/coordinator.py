@@ -8,7 +8,7 @@ unique image -- minutes, not seconds, so it runs on its own schedule.
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 import logging
 from time import monotonic
@@ -41,6 +41,7 @@ from .const import (
     POLL_TIMEOUT,
     UPDATE_TIMEOUT,
 )
+from .inventory import DashboardInventory, parse_inventory_sections
 from .telemetry import FAST, INVENTORY
 from .model import ImageStatus, Snapshot, build_snapshot, build_update_state, refs_to_check
 from .parse import parse_image_digests, parse_inventory, parse_remote_digests
@@ -102,6 +103,9 @@ class UnraidCoordinator(DataUpdateCoordinator[Snapshot]):
         self._reported_failed: set[str] = set()
         self._inventory_due = 0.0
         self._streams_due = 0.0
+        self._users_due = 0.0
+        self._usb_mapping_due = 0.0
+        self._inventory_state: DashboardInventory | None = None
 
     async def async_refresh_inventory(self) -> None:
         """A guarded array start needs current pool membership, even off cadence."""
@@ -112,26 +116,50 @@ class UnraidCoordinator(DataUpdateCoordinator[Snapshot]):
         now = monotonic()
         include_inventory = now >= self._inventory_due
         include_streams = now >= self._streams_due
+        include_users = now >= self._users_due
+        include_usb_mapping = now >= self._usb_mapping_due
         # Deadlines advance for attempted groups, including errors. Optional
         # probes must never fall into a retry loop on the normal poll cadence.
         if include_inventory:
             self._inventory_due = now + 300
         if include_streams:
             self._streams_due = now + 60
+        if include_users:
+            self._users_due = now + 300
+        if include_usb_mapping:
+            self._usb_mapping_due = now + 60
+        inventory_requested = '\n'.join(('inv_usb', 'inv_coral', *(('inv_users',) if include_users else ()),
+                                         *(('inv_usb_mapping',) if include_usb_mapping else ())))
+        def invalidate_inventory():
+            # Transport/truncation failure also consumes due groups. Keep that
+            # failed sample separately so a subsequent skip cannot revive data
+            # from the last complete Snapshot.
+            previous = self._inventory_state or (self.data.inventory if self.data else None)
+            self._inventory_state = parse_inventory_sections({'inv_requested': inventory_requested}, previous, sampled_at=now)
         try:
             result = await self.client.run(build_state_command(
-                include_inventory=include_inventory, include_streams=include_streams), timeout=POLL_TIMEOUT)
+                include_inventory=include_inventory, include_streams=include_streams, include_devices=True,
+                include_users=include_users, include_usb_mapping=include_usb_mapping), timeout=POLL_TIMEOUT)
         except (SSHAuthError, SSHHostKeyError) as err:
+            invalidate_inventory()
             raise ConfigEntryAuthFailed(str(err)) from err
         except SSHError as err:
+            invalidate_inventory()
             raise UpdateFailed(f"SSH: {err}") from err
         try:
             sections = split_output(result.stdout)
         except TruncatedOutput as err:
+            invalidate_inventory()
             raise UpdateFailed(f"output truncated ({len(result.stdout)} bytes)") from err
         requested = (*FAST, *(INVENTORY if include_inventory else ()), *(('dash_streams',) if include_streams else ()))
+        sections['inv_requested'] = inventory_requested
         sections['dash_requested'] = '\n'.join(requested)
-        snapshot = build_snapshot(sections, self.data, sampled_at=monotonic())
+        previous = replace(self.data, inventory=self._inventory_state) if self.data and self._inventory_state else self.data
+        snapshot = build_snapshot(sections, previous, sampled_at=monotonic())
+        if self.data is None and self._inventory_state is not None:
+            snapshot = replace(snapshot, inventory=parse_inventory_sections(
+                sections, self._inventory_state, sampled_at=snapshot.sampled_at))
+        self._inventory_state = snapshot.inventory
         new_failures = snapshot.failed - self._reported_failed
         if new_failures:
             _LOGGER.warning("unraid_ssh: sections unparsable on %s: %s", self.host, ", ".join(sorted(new_failures)))

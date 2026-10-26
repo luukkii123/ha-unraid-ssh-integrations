@@ -34,6 +34,7 @@ _LOGGER = logging.getLogger(__name__)
 #: judged at all. A failed section means the server told us nothing about that
 #: kind of thing this poll -- not that the thing is gone.
 _ENTITY_SECTIONS: tuple[tuple[tuple[str, ...], frozenset[str]], ...] = (
+    (("coral_temp_", "coral_status_"), frozenset({"inv_coral"})),
     (("net_rx_", "net_tx_"), frozenset({"dash_interfaces"})),
     (("disk_smart_",), frozenset({"disks", "dash_smart"})),
     (("container_", "update_", "restart_container_"), frozenset({"docker"})),
@@ -154,7 +155,7 @@ def async_prune_stale(hass: HomeAssistant, entry: UnraidConfigEntry) -> None:
         return
     prefix = entry.entry_id + "_"
     expected = {prefix + key for key in expected_keys(entry, snapshot)}
-    failures = snapshot.failed | snapshot.telemetry.failed
+    failures = snapshot.failed | snapshot.telemetry.failed | snapshot.inventory.failed
     registry = er.async_get(hass)
     now = dt_util.utcnow()
     clocks: dict[str, datetime] = {}

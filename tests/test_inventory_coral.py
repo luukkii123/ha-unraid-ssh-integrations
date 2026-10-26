@@ -18,7 +18,7 @@ def test_alive_millidegrees_source_and_two_ids():
     result=parse([pci(),{**pci(),'pci_address':'0000:07:00.0','path':'/sys/class/apex/apex_1'}])
     assert len(result.coral)==2
     assert result.coral[0].state=='ready' and result.coral[0].temperature_c==49.55
-    assert result.coral[0].raw_status=='ALIVE' and result.coral[0].source=='pci_address'
+    assert result.coral[0].raw_status=='ALIVE' and result.coral[0].source=='/sys/class/apex/apex_0/pci_address'
     assert result.coral[0].id!=result.coral[1].id
 
 
@@ -38,7 +38,7 @@ def test_empty_failure_and_fallback_identity():
     assert parse_inventory_sections({}).coral is None
     row={**pci(),'pci_address':'','path':'/sys/class/apex/apex_3','realpath':'/private/topology'}
     result=parse([row]).coral[0]
-    assert result.id=='/sys/class/apex/apex_3' and result.source=='sysfs_class'
+    assert result.id=='/sys/class/apex/apex_3' and result.source=='/sys/class/apex/apex_3'
     assert '/private' not in str(result)
 
 

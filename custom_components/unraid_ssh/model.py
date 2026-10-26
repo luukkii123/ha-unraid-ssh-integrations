@@ -17,6 +17,7 @@ import time
 from typing import Any, Callable
 
 from . import parse
+from .inventory import DashboardInventory, parse_inventory_sections
 from .telemetry import DashboardTelemetry, parse_dashboard_sections
 from .icons import IconSource, parse_icon_metadata
 from .parse import (
@@ -242,6 +243,7 @@ class Snapshot:
     stack_services: dict[str, parse.StackServices] = field(default_factory=dict)
     telemetry: DashboardTelemetry = field(default_factory=DashboardTelemetry)
     pool_start_inventory: tuple[parse.PoolStartSlot, ...] | None = field(default=None, repr=False)
+    inventory: DashboardInventory = field(default_factory=DashboardInventory)
 
 
 def _section(sections: dict[str, str], name: str, fn: Callable[[str], Any], failed: set[str], default: Any) -> Any:
@@ -333,6 +335,7 @@ def build_snapshot(sections: dict[str, str], previous: Snapshot | None, *, sampl
         icons_valid=icons_valid,
         container_resources={c.name: replace(docker_stats[c.name], ram_limit=docker_limits.get(c.name)) for c in containers if c.state == "running" and c.name in docker_stats},
         vm_resources=resources, sampled_at=sampled_at, stack_services=stack_services,
+        inventory=parse_inventory_sections(sections, previous.inventory if previous else None, sampled_at=sampled_at),
         telemetry=parse_dashboard_sections(sections, previous.telemetry if previous else None, sampled_at=sampled_at),
         pool_start_inventory=pool_start_inventory,
     )
