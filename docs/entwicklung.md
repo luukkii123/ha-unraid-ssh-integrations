@@ -209,3 +209,29 @@ und werden von der Array-Karte verarbeitet. Deren abschließende
 Chromium-Prüfung bei 320/480/960 px, hell/dunkel bestand einschließlich
 Kapazitätstiteln und Poolmitgliedern ohne eigenes Dateisystem. Vor dem Tag
 wurde ausschließlich die Manifestversion auf 0.8.1 angehoben.
+
+
+**26.10.2026 – 0.9.0, Dashboarddaten und geschützte Serveraktionen:**
+Sieben strukturierte Dashboard-Sensoren, zusätzliche numerische Telemetrie
+und zehn fest erlaubte Serverknöpfe. Paritätsstart enthält keine Korrektur.
+Arraystart verlangt vollständige frische Poolsicherheitsdaten; optionale
+Quellen bleiben bei fehlendem Nachweis unbekannt. Readergruppen besitzen
+getrennte Achtsekundenbudgets bei unverändertem 20-s-SSH-Timeout; höchstens
+vier Quellen gleichzeitig, einschließlich nachgewiesenem Kindprozessabbruch.
+
+Die reine/PHP- und echte HA-Testmatrix bestand 1.076/1.076 Fälle ohne Skips:
+je 345 reine/PHP- und 193 HA-Tests unter HA 2026.7.0 und 2026.9.2.
+Config-Flow-Zweigabdeckung jeweils 100 %, statische UI-Prüfung 0 Verstöße.
+Gezielte Regressionen prüfen vollständige Poolslots, Quellenisolation,
+Docker-Rohmodi, Unicode-Sharenamen und erhaltene ausgelassene Samples.
+Echte PHP-Aufrufformen mit synthetischen Werkzeugen belegen Timeout-/TERM-
+Abbruch einschließlich signalignorierender Kinder und maximal vier Quellen.
+Recorder-Tests beweisen ausgeschlossene Listen bei erhaltener Zahlenhistorie.
+
+Die konsumierenden Karten wurden separat mit synthetischen Daten bei
+320/480/960 px in beiden Themen geprüft: 4.462 Textprüfungen ohne Layoutbefund
+und 150 bestandene Popup-Prüfungen. Die Integration selbst besitzt keine
+eigene Browseroberfläche; Config-/Optionsformulare bleiben unverändert.
+Alle neuen Fixtures sind erfunden, alle Aktionsprüfungen verwenden Attrappen.
+Keine Hardware-/Serveraktion und keine reale Laufzeitfähigkeit wird aus
+diesen Tests abgeleitet; echte Installationsbelege bleiben außerhalb GitHub.
